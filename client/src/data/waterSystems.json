@@ -1,0 +1,68 @@
+[
+  {
+    "id": 1,
+    "pwsid": "FL4004801",
+    "name": "Palm Beach County Water Utilities (PBCWUD)",
+    "zip_codes": "[\"33401\",\"33403\",\"33404\",\"33405\",\"33406\",\"33407\",\"33408\",\"33409\",\"33410\",\"33411\",\"33412\",\"33413\",\"33414\",\"33415\",\"33417\",\"33418\",\"33426\",\"33428\",\"33430\",\"33431\",\"33432\",\"33433\",\"33434\",\"33436\",\"33437\",\"33438\",\"33440\",\"33441\",\"33444\",\"33445\",\"33446\",\"33448\",\"33449\",\"33460\",\"33461\",\"33462\",\"33463\",\"33464\",\"33465\",\"33466\",\"33467\",\"33469\",\"33470\",\"33471\",\"33472\",\"33473\",\"33474\",\"33476\",\"33477\",\"33478\",\"33480\",\"33483\",\"33484\",\"33486\",\"33487\",\"33488\",\"33496\",\"33497\",\"33498\",\"33499\"]",
+    "city": "West Palm Beach",
+    "county": "Palm Beach",
+    "population_served": 650000,
+    "source_type": "SW",
+    "status": "Active"
+  },
+  {
+    "id": 2,
+    "pwsid": "FL4004852",
+    "name": "City of West Palm Beach Utilities",
+    "zip_codes": "[\"33401\",\"33402\",\"33403\",\"33404\",\"33405\",\"33406\",\"33407\",\"33408\",\"33409\",\"33411\",\"33412\",\"33417\",\"33418\"]",
+    "city": "West Palm Beach",
+    "county": "Palm Beach",
+    "population_served": 120000,
+    "source_type": "SW",
+    "status": "Active"
+  },
+  {
+    "id": 3,
+    "pwsid": "FL4004839",
+    "name": "Boca Raton Utilities",
+    "zip_codes": "[\"33431\",\"33432\",\"33433\",\"33434\",\"33486\",\"33487\",\"33488\",\"33496\",\"33497\",\"33498\",\"33499\"]",
+    "city": "Boca Raton",
+    "county": "Palm Beach",
+    "population_served": 100000,
+    "source_type": "GW",
+    "status": "Active"
+  },
+  {
+    "id": 4,
+    "pwsid": "FL4004875",
+    "name": "Boynton Beach Utilities",
+    "zip_codes": "[\"33435\",\"33436\",\"33437\",\"33472\",\"33473\",\"33426\",\"33460\",\"33462\",\"33463\",\"33465\"]",
+    "city": "Boynton Beach",
+    "county": "Palm Beach",
+    "population_served": 75000,
+    "source_type": "GW",
+    "status": "Active"
+  },
+  {
+    "id": 5,
+    "pwsid": "FL4004822",
+    "name": "Delray Beach Water Treatment Plant",
+    "zip_codes": "[\"33444\",\"33445\",\"33446\",\"33447\",\"33448\",\"33483\",\"33484\"]",
+    "city": "Delray Beach",
+    "county": "Palm Beach",
+    "population_served": 70000,
+    "source_type": "GW",
+    "status": "Active"
+  },
+  {
+    "id": 6,
+    "pwsid": "FL4004813",
+    "name": "Lake Worth Beach Utilities",
+    "zip_codes": "[\"33460\",\"33461\",\"33462\",\"33467\"]",
+    "city": "Lake Worth",
+    "county": "Palm Beach",
+    "population_served": 45000,
+    "source_type": "GW",
+    "status": "Active"
+  }
+]

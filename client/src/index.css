@@ -1,0 +1,206 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Water Quality Dashboard — Deep Ocean Theme ──
+   Inspired by clean water, ocean blue, science precision
+*/
+
+@layer base {
+  :root {
+    /* Surfaces — deep navy-slate backgrounds */
+    --background: 220 25% 97%;
+    --foreground: 220 30% 10%;
+
+    --card: 220 20% 99%;
+    --card-foreground: 220 30% 10%;
+
+    --popover: 220 20% 99%;
+    --popover-foreground: 220 30% 10%;
+
+    /* Primary — ocean teal/blue */
+    --primary: 200 85% 32%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 20% 93%;
+    --secondary-foreground: 220 25% 20%;
+
+    --muted: 210 15% 94%;
+    --muted-foreground: 220 15% 48%;
+
+    --accent: 200 70% 90%;
+    --accent-foreground: 200 85% 20%;
+
+    /* Semantic colors */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 20% 88%;
+    --input: 215 20% 88%;
+    --ring: 200 85% 32%;
+
+    --radius: 0.5rem;
+
+    /* Chart colors */
+    --chart-1: 200 85% 32%;
+    --chart-2: 140 60% 38%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 0 72% 51%;
+    --chart-5: 263 60% 52%;
+
+    /* Custom tokens */
+    --color-pfos: 0 72% 51%;
+    --color-pfoa: 25 85% 50%;
+    --color-pfna: 263 60% 52%;
+    --color-pfhxs: 38 92% 50%;
+    --color-safe: 140 60% 38%;
+    --color-warning: 38 92% 50%;
+    --color-danger: 0 72% 51%;
+
+    --sidebar-background: 218 30% 14%;
+    --sidebar-foreground: 220 15% 85%;
+    --sidebar-primary: 200 75% 55%;
+    --sidebar-primary-foreground: 220 30% 8%;
+    --sidebar-accent: 220 25% 20%;
+    --sidebar-accent-foreground: 220 15% 85%;
+    --sidebar-border: 220 20% 20%;
+    --sidebar-ring: 200 75% 55%;
+  }
+
+  .dark {
+    --background: 220 30% 8%;
+    --foreground: 210 20% 88%;
+
+    --card: 220 28% 11%;
+    --card-foreground: 210 20% 88%;
+
+    --popover: 220 28% 11%;
+    --popover-foreground: 210 20% 88%;
+
+    --primary: 200 75% 55%;
+    --primary-foreground: 220 30% 8%;
+
+    --secondary: 220 25% 18%;
+    --secondary-foreground: 210 20% 80%;
+
+    --muted: 220 22% 16%;
+    --muted-foreground: 220 15% 55%;
+
+    --accent: 200 40% 20%;
+    --accent-foreground: 200 75% 70%;
+
+    --destructive: 0 65% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 20% 22%;
+    --input: 220 20% 18%;
+    --ring: 200 75% 55%;
+
+    --chart-1: 200 75% 60%;
+    --chart-2: 140 55% 52%;
+    --chart-3: 38 85% 60%;
+    --chart-4: 0 65% 62%;
+    --chart-5: 263 55% 68%;
+
+    --sidebar-background: 220 35% 7%;
+    --sidebar-foreground: 220 15% 80%;
+    --sidebar-primary: 200 75% 55%;
+    --sidebar-primary-foreground: 220 35% 7%;
+    --sidebar-accent: 220 28% 14%;
+    --sidebar-accent-foreground: 220 15% 80%;
+    --sidebar-border: 220 25% 16%;
+    --sidebar-ring: 200 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Dashboard full-viewport layout */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+/* Tabular numbers for data */
+.tabular {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Status badge colors */
+.badge-danger { @apply bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400; }
+.badge-warning { @apply bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400; }
+.badge-safe { @apply bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400; }
+.badge-info { @apply bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400; }
+
+/* Status dot */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.status-dot.danger { background: hsl(var(--color-danger)); animation: pulse-red 2s infinite; }
+.status-dot.warning { background: hsl(var(--color-warning)); }
+.status-dot.safe { background: hsl(var(--color-safe)); }
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(0 72% 51% / 0.4); }
+  50% { box-shadow: 0 0 0 6px hsl(0 72% 51% / 0); }
+}
+
+/* Chart container */
+.chart-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+/* Scrollable main area */
+.main-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Sidebar scroll */
+.sidebar-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Recharts custom styles */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  @apply !bg-card !border-border !rounded-lg !shadow-lg;
+}
+
+/* Alert pulse animation */
+@keyframes alert-glow {
+  0%, 100% { border-color: hsl(0 72% 51% / 0.3); }
+  50% { border-color: hsl(0 72% 51% / 0.8); }
+}
+.alert-active {
+  animation: alert-glow 2s ease-in-out infinite;
+}
+
+/* Number counter animation */
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.count-anim {
+  animation: count-up 0.4s ease-out;
+}
