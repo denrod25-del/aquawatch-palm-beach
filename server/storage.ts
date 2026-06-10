@@ -18,6 +18,34 @@ const DB_PATH = getDbPath();
 const sqlite = new Database(DB_PATH);
 export const db = drizzle(sqlite, { schema });
 
+// Auto-create tables on cold start (needed on Vercel /tmp where DB is always empty)
+export function initDb() {
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contaminant TEXT NOT NULL,
+      threshold REAL NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'ppt',
+      zip_code TEXT,
+      email TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      zip_code TEXT NOT NULL,
+      contaminant_concern TEXT,
+      message TEXT,
+      source TEXT NOT NULL DEFAULT 'water-alert',
+      created_at TEXT NOT NULL,
+      notified INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+}
+
 export interface IStorage {
   // Water systems
   getWaterSystems(zipCode?: string): WaterSystem[];

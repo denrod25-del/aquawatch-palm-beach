@@ -1,13 +1,15 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage } from "./storage";
+import { storage, initDb } from "./storage";
 import { seedDatabase } from "./seed";
 import { insertAlertSchema, insertLeadSchema } from "@shared/schema";
 import { sendLeadNotification } from "./email";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  // Seed on startup
-  seedDatabase();
+  // Always init DB schema first (creates tables if empty — required on Vercel /tmp)
+  initDb();
+  // Seed static data (no-ops if already seeded; skipped on Vercel since reads are static)
+  if (!process.env.VERCEL) seedDatabase();
 
   // Get water systems (optionally filter by zip)
   app.get("/api/water-systems", (req, res) => {
