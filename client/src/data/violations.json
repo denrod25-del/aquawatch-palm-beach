@@ -4,26 +4,26 @@
     "pwsid": "FL4004801",
     "violation_id": "V-2024-001",
     "contaminant": "PFOS",
-    "violation_type": "MCL",
-    "category": "Health-Based",
+    "violation_type": "BENCHMARK",
+    "category": "Health Benchmark Exceedance",
     "is_health_based": 1,
     "start_date": "2024-11-06",
     "end_date": null,
     "status": "Ongoing",
-    "description": "PFOS detected at 18 ppt at WTP #2 POE, exceeding EPA MCL of 4 ppt. Public notification issued."
+    "description": "PFOS detected at 18 ppt at WTP #2 POE \u2014 exceeds AquaWatch health benchmark and future EPA MCL of 4 ppt. No official regulatory violation has been reported in EPA SDWIS; MCL compliance is not required until 2029. Verify status with PBCWUD CCR or EPA SDWIS before citing as a legal violation."
   },
   {
     "id": 2,
     "pwsid": "FL4004801",
     "violation_id": "V-2024-002",
     "contaminant": "PFOA",
-    "violation_type": "MCL",
-    "category": "Health-Based",
+    "violation_type": "BENCHMARK",
+    "category": "Health Benchmark Exceedance",
     "is_health_based": 1,
     "start_date": "2024-11-06",
     "end_date": null,
     "status": "Ongoing",
-    "description": "PFOA detected at 6.1 ppt at WTP #2 POE, exceeding EPA MCL of 4 ppt."
+    "description": "PFOA detected at 6.1 ppt at WTP #2 POE \u2014 exceeds AquaWatch health benchmark and future EPA MCL of 4 ppt. No official regulatory violation has been reported in EPA SDWIS; MCL compliance is not required until 2029. Verify status with PBCWUD CCR or EPA SDWIS before citing as a legal violation."
   },
   {
     "id": 3,

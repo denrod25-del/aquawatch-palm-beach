@@ -169,12 +169,23 @@ export function getSummary(zip?: string) {
   const activeViolations = allViolations.filter(v => v.status === "Ongoing");
   const pfosReadings = allReadings.filter(r => r.contaminant === "PFOS").sort((a, b) => b.sampleDate.localeCompare(a.sampleDate));
   const pfoaReadings = allReadings.filter(r => r.contaminant === "PFOA").sort((a, b) => b.sampleDate.localeCompare(a.sampleDate));
+  // Separate true regulatory violations (MCL, TT, MR) from benchmark exceedances
+  const regulatoryViolations = allViolations.filter(v => v.violationType !== "BENCHMARK");
+  const benchmarkExceedances = allViolations.filter(v => v.violationType === "BENCHMARK");
+  const activeRegulatory = regulatoryViolations.filter(v => v.status === "Ongoing");
+  const activeBenchmarks = benchmarkExceedances.filter(v => v.status === "Ongoing");
+
   return {
     systemCount: systems.length,
     populationServed: systems.reduce((s, x) => s + x.populationServed, 0),
+    // "activeViolations" in the summary = all unresolved entries (regulatory + benchmark)
+    // Dashboard KPI card now labels these "PFAS Exceedances" for clarity
     activeViolations: activeViolations.length,
     totalViolations: allViolations.length,
     healthBasedViolations: allViolations.filter(v => v.isHealthBased === 1).length,
+    // Separate counts for accurate display
+    activeRegulatoryViolations: activeRegulatory.length,
+    activeBenchmarkExceedances: activeBenchmarks.length,
     latestPFOS: pfosReadings[0]?.value ?? 0,
     latestPFOA: pfoaReadings[0]?.value ?? 0,
     pfosEPALimit: 4,

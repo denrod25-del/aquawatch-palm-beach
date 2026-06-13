@@ -92,7 +92,7 @@ function getRiskLevel(value: number, epaLimit: number) {
 
 function RiskBadge({ value, limit }: { value: number; limit: number }) {
   const level = getRiskLevel(value, limit);
-  const labels = { danger: "Exceeds MCL", warning: "Approaching MCL", safe: "Within Limit" };
+  const labels = { danger: "Exceeds Health Benchmark", warning: "Approaching Benchmark", safe: "Within Limit" };
   const cls = { danger: "badge-danger", warning: "badge-warning", safe: "badge-safe" };
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls[level]}`}>{labels[level]}</span>;
 }
@@ -707,7 +707,7 @@ export default function Dashboard() {
           {[
             { label: "Overview", icon: Activity, id: "overview" },
             { label: "PFAS Trends", icon: TrendingUp, id: "trends" },
-            { label: "Violations", icon: ShieldAlert, id: "violations" },
+            { label: "Exceedances", icon: ShieldAlert, id: "violations" },
             { label: "Comparisons", icon: Globe, id: "comparisons" },
             { label: "Water Systems", icon: MapPin, id: "systems" },
           ].map(item => (
@@ -833,8 +833,8 @@ export default function Dashboard() {
                 status={pfoaStatus} trend="up"
               />
               <KPICard
-                label="Active Violations" value={activeViolationsCount}
-                sub={`${violations.filter(v => v.isHealthBased === 1 && v.status === "Ongoing").length} health-based`}
+                label="PFAS Exceedances" value={activeViolationsCount}
+                sub={`${violations.filter(v => v.violationType === "BENCHMARK" && v.status === "Ongoing").length} benchmark · ${violations.filter(v => v.violationType !== "BENCHMARK" && v.status === "Ongoing").length} official`}
                 icon={ShieldAlert}
                 status={activeViolationsCount > 0 ? "danger" : "safe"}
               />
@@ -929,7 +929,7 @@ export default function Dashboard() {
                         {fmt(c.value)} <span className="text-xs font-normal text-muted-foreground">ppt</span>
                       </p>
                       <ChemicalTag name={c.name} variant="badge" />
-                      <p className="text-[10px] text-muted-foreground">MCL: {c.limit} · EWG: {c.ewg}</p>
+                      <p className="text-[10px] text-muted-foreground">Future MCL: {c.limit} (2029) · EWG: {c.ewg}</p>
                       <RiskBadge value={c.value} limit={c.limit} />
                     </div>
                   </Card>
@@ -941,10 +941,10 @@ export default function Dashboard() {
           {/* ── SECTION: VIOLATION HISTORY ── */}
           <section id="violations">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Violation History</h2>
+              <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Health Benchmark Exceedances</h2>
               <div className="flex items-center gap-2">
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${activeViolationsCount > 0 ? "badge-danger" : "badge-safe"}`}>
-                  {activeViolationsCount} Active
+                  {activeViolationsCount} Unresolved
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-xs font-medium badge-info">
                   {violations.filter(v => v.status === "Resolved").length} Resolved
@@ -953,10 +953,17 @@ export default function Dashboard() {
             </div>
             <Card>
               <CardContent className="p-0">
+                {/* Accuracy disclaimer */}
+                <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/40 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                  <span className="mt-0.5 flex-shrink-0">⚠</span>
+                  <span>
+                    <strong>Note:</strong> PFAS entries marked <span className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">BENCHMARK</span> reflect levels exceeding AquaWatch's 4 ppt health threshold and the <em>future</em> EPA MCL. These are <strong>not confirmed regulatory violations</strong> — PBCWUD's official CCR reports zero SDWIS violations because PFAS MCL enforcement is not required until 2029. Verify current status at <a href="https://www.epa.gov/enviro/sdwis-search" target="_blank" rel="noopener noreferrer" className="underline">EPA SDWIS</a> or in the utility's official CCR.
+                  </span>
+                </div>
                 {violationsLoading ? (
-                  <div className="p-6 text-center text-muted-foreground text-sm">Loading violations…</div>
+                  <div className="p-6 text-center text-muted-foreground text-sm">Loading data…</div>
                 ) : violations.length === 0 ? (
-                  <div className="p-6 text-center text-muted-foreground text-sm">No violations found for selected filters.</div>
+                  <div className="p-6 text-center text-muted-foreground text-sm">No exceedances found for selected filters.</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm" data-testid="violations-table">
@@ -984,7 +991,10 @@ export default function Dashboard() {
                                 </span>
                               </td>
                               <td className="px-4 py-3">
-                                <span className="text-xs px-1.5 py-0.5 rounded bg-muted font-mono">{v.violationType}</span>
+                                <span
+                                  className={`text-xs px-1.5 py-0.5 rounded font-mono ${v.violationType === "BENCHMARK" ? "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300" : "bg-muted"}`}
+                                  title={v.violationType === "BENCHMARK" ? "Health benchmark exceedance — not an official regulatory violation" : "Official regulatory violation type"}
+                                >{v.violationType}</span>
                               </td>
                               <td className="px-4 py-3">
                                 <span className={`text-xs ${v.isHealthBased === 1 ? "badge-danger" : "badge-info"} px-1.5 py-0.5 rounded-full`}>
@@ -1011,7 +1021,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
             <p className="text-xs text-muted-foreground mt-2">
-              Source: <a href="https://www.epa.gov/enviro/sdwis-overview" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">EPA SDWIS Federal Reporting Services</a> · Violation history for last 10 years
+              Source: <a href="https://www.epa.gov/enviro/sdwis-overview" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">EPA SDWIS Federal Reporting Services</a> · Health benchmark exceedances · PFAS MCL enforcement begins 2029 — official violations may not yet appear in regulatory records
             </p>
           </section>
 
@@ -1157,7 +1167,7 @@ export default function Dashboard() {
                         </div>
                         {sysViolations.length > 0 && (
                           <span className="badge-danger px-1.5 py-0.5 rounded-full text-[10px] font-medium ml-2 flex-shrink-0">
-                            {sysViolations.length} violation{sysViolations.length > 1 ? "s" : ""}
+                            {sysViolations.length} exceedance{sysViolations.length > 1 ? "s" : ""}
                           </span>
                         )}
                       </div>
