@@ -40,6 +40,12 @@ export type VerificationStatus =
   | "source_linked"
   | "cross_verified";
 
+export type UtilityVerificationTier =
+  | "cross_verified"
+  | "source_linked"
+  | "needs_review"
+  | "unverified";
+
 const DEFAULT_PROVENANCE = {
   sourceConfidence: "aquawatch_dataset" as SourceConfidence,
   sourceType: "aquawatch" as SourceType,
@@ -92,6 +98,22 @@ export interface ZipCcrEntry {
   sourceType?: SourceType;
   verificationStatus?: VerificationStatus;
   lastVerified?: string | null;
+}
+
+export interface UtilityVerificationProfile {
+  pwsid: string;
+  utilityName: string;
+  tier: UtilityVerificationTier;
+  readingCount: number;
+  ccrReportCount: number;
+  officialLinkedReportCount: number;
+  benchmarkExceedanceCount: number;
+  regulatoryViolationCount: number;
+  unresolvedRegulatoryViolationCount: number;
+  unresolvedBenchmarkCount: number;
+  missingPwsid: boolean;
+  needsReviewReasons: string[];
+  recommendedNextAction: string;
 }
 
 // ── Map snake_case → camelCase ──────────────────────────────────
@@ -235,6 +257,70 @@ export function getBenchmarks(contaminant: string) {
   };
 }
 
+export function getUtilityVerificationProfile(pwsid: string): UtilityVerificationProfile | null {
+  const system = waterSystems.find(s => s.pwsid === pwsid);
+  if (!system) return null;
+
+  const systemReadings = readings.filter(r => r.pwsid === pwsid);
+  const systemViolations = violations.filter(v => v.pwsid === pwsid);
+  const systemReports = ccrReports.filter((r: any) => r.pwsid === pwsid);
+  const benchmarkExceedances = systemViolations.filter(v => v.violationType === "BENCHMARK");
+  const regulatoryViolations = systemViolations.filter(v => v.violationType !== "BENCHMARK");
+  const unresolvedRegulatoryViolationCount = regulatoryViolations.filter(v => v.status === "Ongoing").length;
+  const unresolvedBenchmarkCount = benchmarkExceedances.filter(v => v.status === "Ongoing").length;
+  const officialLinkedReportCount = systemReports.filter((r: any) => Boolean(r.report_url)).length;
+
+  const needsReviewReasons: string[] = [];
+  if (!pwsid) needsReviewReasons.push("Missing PWSID/SDWIS identifier.");
+  if (systemReadings.length === 0) needsReviewReasons.push("No contaminant readings linked to this utility.");
+  if (officialLinkedReportCount === 0) needsReviewReasons.push("No CCR/report URL linked.");
+  if (benchmarkExceedances.length > 0) needsReviewReasons.push("Contains AquaWatch benchmark exceedances that should be verified against CCR/SDWIS before publication.");
+  if (regulatoryViolations.length > 0) needsReviewReasons.push("Contains regulatory-style violation records that should be confirmed against official sources.");
+
+  let tier: UtilityVerificationTier = "needs_review";
+  if (system.verificationStatus === "cross_verified") {
+    tier = "cross_verified";
+  } else if (officialLinkedReportCount > 0 && needsReviewReasons.length === 0) {
+    tier = "source_linked";
+  } else if (!pwsid || officialLinkedReportCount === 0) {
+    tier = "unverified";
+  }
+
+  const recommendedNextAction = tier === "cross_verified"
+    ? "Ready for public-facing reporting. Schedule routine re-verification."
+    : benchmarkExceedances.length > 0
+      ? "Verify benchmark exceedances against CCR, SDWIS, or UCMR5 before calling them official."
+      : officialLinkedReportCount > 0
+        ? "Review linked CCR/report and update verification status."
+        : "Find official CCR/report link and confirm PWSID.";
+
+  return {
+    pwsid,
+    utilityName: system.name,
+    tier,
+    readingCount: systemReadings.length,
+    ccrReportCount: systemReports.length,
+    officialLinkedReportCount,
+    benchmarkExceedanceCount: benchmarkExceedances.length,
+    regulatoryViolationCount: regulatoryViolations.length,
+    unresolvedRegulatoryViolationCount,
+    unresolvedBenchmarkCount,
+    missingPwsid: !pwsid,
+    needsReviewReasons,
+    recommendedNextAction,
+  };
+}
+
+export function getUtilityVerificationProfiles(): UtilityVerificationProfile[] {
+  return waterSystems
+    .map(system => getUtilityVerificationProfile(system.pwsid))
+    .filter(Boolean) as UtilityVerificationProfile[];
+}
+
+export function getUtilitiesNeedingReview(): UtilityVerificationProfile[] {
+  return getUtilityVerificationProfiles().filter(profile => profile.tier !== "cross_verified");
+}
+
 export function getSummary(zip?: string) {
   const effectiveZip = (!zip || zip === "all") ? undefined : zip;
   const systems = getWaterSystems(effectiveZip);
@@ -260,6 +346,8 @@ export function getSummary(zip?: string) {
     // Separate counts for accurate display
     activeRegulatoryViolations: activeRegulatory.length,
     activeBenchmarkExceedances: activeBenchmarks.length,
+    utilitiesNeedingReview: getUtilitiesNeedingReview().length,
+    crossVerifiedUtilities: getUtilityVerificationProfiles().filter(p => p.tier === "cross_verified").length,
     latestPFOS: pfosReadings[0]?.value ?? 0,
     latestPFOA: pfoaReadings[0]?.value ?? 0,
     pfosEPALimit: 4,
