@@ -4,6 +4,11 @@
  *
  * JSON files use snake_case (DB column names).
  * This module re-exports everything in camelCase to match the Dashboard/CCR type interfaces.
+ *
+ * Provenance model:
+ * - sourceConfidence explains how trustworthy a value is right now.
+ * - sourceType explains where the value came from.
+ * - verificationStatus prevents AquaWatch-generated intelligence from being confused with official regulatory findings.
  */
 import waterSystemsRaw from "./waterSystems.json";
 import readingsRaw from "./readings.json";
@@ -11,12 +16,47 @@ import violationsRaw from "./violations.json";
 import zipCcrRaw from "./zipCcr.json";
 import ccrReportsRaw from "./ccrReports.json";
 
+// ── Provenance Types ─────────────────────────────────────────────
+
+export type SourceConfidence =
+  | "official_ccr"
+  | "official_sdwis"
+  | "official_ucmr5"
+  | "aquawatch_dataset"
+  | "inferred"
+  | "unverified";
+
+export type SourceType =
+  | "ccr"
+  | "sdwis"
+  | "ucmr5"
+  | "aquawatch"
+  | "inferred"
+  | "unknown";
+
+export type VerificationStatus =
+  | "unverified"
+  | "needs_review"
+  | "source_linked"
+  | "cross_verified";
+
+const DEFAULT_PROVENANCE = {
+  sourceConfidence: "aquawatch_dataset" as SourceConfidence,
+  sourceType: "aquawatch" as SourceType,
+  verificationStatus: "needs_review" as VerificationStatus,
+  lastVerified: null as string | null,
+};
+
 // ── Camel-cased types (match existing component interfaces) ────
 
 export interface WaterSystem {
   id: number; pwsid: string; name: string; zipCodes: string;
   city: string; county: string; populationServed: number;
   sourceType: string; status: string;
+  sourceConfidence?: SourceConfidence;
+  dataSourceType?: SourceType;
+  verificationStatus?: VerificationStatus;
+  lastVerified?: string | null;
 }
 
 export interface Reading {
@@ -24,6 +64,10 @@ export interface Reading {
   unit: string; sampleDate: string; samplePoint: string | null;
   method: string | null; epaLimit: number | null;
   ewgLimit: number | null; nationalAvg: number | null;
+  sourceConfidence?: SourceConfidence;
+  sourceType?: SourceType;
+  verificationStatus?: VerificationStatus;
+  lastVerified?: string | null;
 }
 
 export interface Violation {
@@ -31,6 +75,10 @@ export interface Violation {
   violationType: string; category: string; isHealthBased: number;
   startDate: string; endDate: string | null; status: string;
   description: string | null;
+  sourceConfidence?: SourceConfidence;
+  sourceType?: SourceType;
+  verificationStatus?: VerificationStatus;
+  lastVerified?: string | null;
 }
 
 export interface ZipCcrEntry {
@@ -40,9 +88,22 @@ export interface ZipCcrEntry {
   priorReportUrl: string | null; pfosLevel: number | null;
   pfoa_level: number | null; // kept for compat
   pfoaLevel: number | null; violationCount: number; notes: string | null;
+  sourceConfidence?: SourceConfidence;
+  sourceType?: SourceType;
+  verificationStatus?: VerificationStatus;
+  lastVerified?: string | null;
 }
 
 // ── Map snake_case → camelCase ──────────────────────────────────
+
+function withProvenance(r: any) {
+  return {
+    sourceConfidence: r.source_confidence ?? DEFAULT_PROVENANCE.sourceConfidence,
+    sourceType: r.source_type_detail ?? r.data_source_type ?? DEFAULT_PROVENANCE.sourceType,
+    verificationStatus: r.verification_status ?? DEFAULT_PROVENANCE.verificationStatus,
+    lastVerified: r.last_verified ?? DEFAULT_PROVENANCE.lastVerified,
+  };
+}
 
 export const waterSystems: WaterSystem[] = (waterSystemsRaw as any[]).map(r => ({
   id: r.id,
@@ -54,6 +115,10 @@ export const waterSystems: WaterSystem[] = (waterSystemsRaw as any[]).map(r => (
   populationServed: r.population_served,
   sourceType: r.source_type,
   status: r.status,
+  sourceConfidence: r.source_confidence ?? DEFAULT_PROVENANCE.sourceConfidence,
+  dataSourceType: r.data_source_type ?? DEFAULT_PROVENANCE.sourceType,
+  verificationStatus: r.verification_status ?? DEFAULT_PROVENANCE.verificationStatus,
+  lastVerified: r.last_verified ?? DEFAULT_PROVENANCE.lastVerified,
 }));
 
 export const readings: Reading[] = (readingsRaw as any[]).map(r => ({
@@ -68,6 +133,7 @@ export const readings: Reading[] = (readingsRaw as any[]).map(r => ({
   epaLimit: r.epa_limit,
   ewgLimit: r.ewg_limit,
   nationalAvg: r.national_avg,
+  ...withProvenance(r),
 }));
 
 export const violations: Violation[] = (violationsRaw as any[]).map(r => ({
@@ -82,6 +148,7 @@ export const violations: Violation[] = (violationsRaw as any[]).map(r => ({
   endDate: r.end_date,
   status: r.status,
   description: r.description,
+  ...withProvenance(r),
 }));
 
 export const zipCcr: ZipCcrEntry[] = (zipCcrRaw as any[]).map(r => ({
@@ -100,9 +167,16 @@ export const zipCcr: ZipCcrEntry[] = (zipCcrRaw as any[]).map(r => ({
   pfoaLevel: r.pfoa_level,
   violationCount: r.violation_count,
   notes: r.notes,
+  ...withProvenance(r),
 }));
 
-export const ccrReports = ccrReportsRaw as any[];
+export const ccrReports = (ccrReportsRaw as any[]).map(r => ({
+  ...r,
+  source_confidence: r.source_confidence ?? DEFAULT_PROVENANCE.sourceConfidence,
+  data_source_type: r.data_source_type ?? "ccr",
+  verification_status: r.verification_status ?? "source_linked",
+  last_verified: r.last_verified ?? null,
+}));
 
 // ── Query helpers (all synchronous) ────────────────────────────
 
