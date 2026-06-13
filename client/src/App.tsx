@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import Dashboard from "@/pages/Dashboard";
 import CcrReports from "@/pages/CcrReports";
+import Verification from "@/pages/Verification";
 import NotFound from "@/pages/not-found";
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/reports" component={CcrReports} />
+            <Route path="/verification" component={Verification} />
             <Route component={NotFound} />
           </Switch>
         </Router>
