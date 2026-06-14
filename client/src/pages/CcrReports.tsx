@@ -9,13 +9,12 @@ import { Input } from "@/components/ui/input";
 import {
   FileText, ExternalLink, Search, Sun, Moon, Download,
   MapPin, AlertTriangle, CheckCircle, Info,
-  Building2, X, Droplets, Link, ChevronRight,
-  Calendar, Globe
+  Building2, X, Droplets, ChevronRight,
+  Calendar, Globe, ShieldCheck, ShieldAlert
 } from "lucide-react";
 
 const EPA_MCL = 4;
 
-// ── Helpers ─────────────────────────────────────────────────────
 function pfasColor(level: number | null): string {
   if (level === null) return "text-muted-foreground";
   if (level > EPA_MCL) return "text-red-500 dark:text-red-400";
@@ -32,12 +31,95 @@ function pfasBg(level: number | null): string {
 
 function statusBadge(entry: ZipCcrEntry) {
   const maxPfas = Math.max(entry.pfosLevel ?? 0, entry.pfoaLevel ?? 0);
-  if (maxPfas > EPA_MCL) return { label: "PFAS Detected", variant: "destructive" as const, icon: <AlertTriangle className="h-3 w-3" /> };
-  if (entry.violationCount > 0) return { label: `${entry.violationCount} Violation${entry.violationCount > 1 ? "s" : ""}`, variant: "secondary" as const, icon: <AlertTriangle className="h-3 w-3 text-yellow-500" /> };
-  return { label: "Within Limits", variant: "secondary" as const, icon: <CheckCircle className="h-3 w-3 text-green-500" /> };
+  if (maxPfas > EPA_MCL) {
+    return {
+      label: "PFAS Benchmark Exceedance",
+      variant: "destructive" as const,
+      icon: <AlertTriangle className="h-3 w-3" />,
+    };
+  }
+  if (entry.violationCount > 0) {
+    return {
+      label: `${entry.violationCount} Reported Issue${entry.violationCount > 1 ? "s" : ""}`,
+      variant: "secondary" as const,
+      icon: <AlertTriangle className="h-3 w-3 text-yellow-500" />,
+    };
+  }
+  return {
+    label: "Within Listed Limits",
+    variant: "secondary" as const,
+    icon: <CheckCircle className="h-3 w-3 text-green-500" />,
+  };
 }
 
-// ── ZIP Card ────────────────────────────────────────────────────
+function pretty(value?: string | null) {
+  if (!value) return "Unknown";
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function verificationBadge(entry: ZipCcrEntry) {
+  const status = entry.verificationStatus ?? "needs_review";
+  if (status === "cross_verified") {
+    return {
+      label: "Cross-Verified",
+      className: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800/40",
+      icon: <ShieldCheck className="h-3 w-3" />,
+    };
+  }
+  if (status === "source_linked") {
+    return {
+      label: "Source Linked",
+      className: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/40",
+      icon: <ShieldCheck className="h-3 w-3" />,
+    };
+  }
+  return {
+    label: "Needs Review",
+    className: "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800/40",
+    icon: <ShieldAlert className="h-3 w-3" />,
+  };
+}
+
+function ProvenanceStrip({ entry }: { entry: ZipCcrEntry }) {
+  const verification = verificationBadge(entry);
+  return (
+    <div className="flex flex-wrap gap-1.5 text-[10px]">
+      <Badge variant="outline" className={`gap-1 ${verification.className}`}>
+        {verification.icon}
+        {verification.label}
+      </Badge>
+      <Badge variant="outline" className="bg-muted/40 text-muted-foreground">
+        Source: {pretty(entry.sourceType)}
+      </Badge>
+      <Badge variant="outline" className="bg-muted/40 text-muted-foreground">
+        Confidence: {pretty(entry.sourceConfidence)}
+      </Badge>
+    </div>
+  );
+}
+
+function ProvenanceNote({ entry }: { entry: ZipCcrEntry }) {
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground leading-relaxed">
+      <div className="font-semibold text-foreground mb-1 flex items-center gap-1.5">
+        <ShieldAlert className="h-3.5 w-3.5" />
+        Data verification status
+      </div>
+      <p>
+        This record is marked <strong className="text-foreground">{pretty(entry.verificationStatus)}</strong> with
+        source type <strong className="text-foreground">{pretty(entry.sourceType)}</strong> and confidence
+        <strong className="text-foreground"> {pretty(entry.sourceConfidence)}</strong>.
+        PFAS numbers above 4 ppt are shown as benchmark exceedances unless confirmed as official regulatory violations by CCR, SDWIS, or UCMR5 review.
+      </p>
+      {entry.lastVerified && (
+        <p className="mt-1">Last verified: <span className="font-mono text-foreground">{entry.lastVerified}</span></p>
+      )}
+    </div>
+  );
+}
+
 function ZipCard({ entry, highlight }: { entry: ZipCcrEntry; highlight: boolean }) {
   const badge = statusBadge(entry);
   const hasData = entry.pfosLevel !== null || entry.pfoaLevel !== null;
@@ -49,7 +131,6 @@ function ZipCard({ entry, highlight }: { entry: ZipCcrEntry; highlight: boolean 
       data-testid={`card-zip-${entry.zipCode}`}
     >
       <CardContent className="p-4 space-y-3">
-        {/* ZIP + city header */}
         <div className="flex items-start justify-between gap-2">
           <div>
             <div className="flex items-center gap-1.5">
@@ -63,21 +144,21 @@ function ZipCard({ entry, highlight }: { entry: ZipCcrEntry; highlight: boolean 
           </div>
           <Badge
             variant={badge.variant}
-            className={`text-xs gap-1 flex-shrink-0 ${badge.label === "Within Limits" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800/40" : ""}`}
+            className={`text-xs gap-1 flex-shrink-0 ${badge.label === "Within Listed Limits" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800/40" : ""}`}
           >
             {badge.icon}
             {badge.label}
           </Badge>
         </div>
 
-        {/* Utility */}
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Building2 className="h-3 w-3 flex-shrink-0" />
           <span className="line-clamp-1">{entry.utilityName}</span>
           {entry.pwsid && <span className="font-mono bg-muted px-1 rounded text-[10px] flex-shrink-0">{entry.pwsid}</span>}
         </div>
 
-        {/* PFAS pills */}
+        <ProvenanceStrip entry={entry} />
+
         {hasData && (
           <div className="grid grid-cols-2 gap-2">
             <div className={`rounded-md px-2 py-1.5 text-center ${pfasBg(entry.pfosLevel)}`}>
@@ -95,7 +176,6 @@ function ZipCard({ entry, highlight }: { entry: ZipCcrEntry; highlight: boolean 
           </div>
         )}
 
-        {/* Report year + links */}
         <div className="space-y-1.5">
           <Button
             size="sm"
@@ -124,7 +204,6 @@ function ZipCard({ entry, highlight }: { entry: ZipCcrEntry; highlight: boolean 
   );
 }
 
-// ── Main Page ───────────────────────────────────────────────────
 export default function CcrReports() {
   const { theme, toggleTheme } = useTheme();
   const [zipInput, setZipInput] = useState("");
@@ -134,25 +213,16 @@ export default function CcrReports() {
   const allEntries: ZipCcrEntry[] = useMemo(() => getZipCcr(), []);
   const isLoading = false;
 
-  // Unique cities for filter
-  const cities = useMemo(() => {
-    const s = new Set(allEntries.map(e => e.city.split(" / ")[0].split(" (")[0]));
-    return ["All", ...Array.from(s).sort()];
-  }, [allEntries]);
-
-  // Filter logic
   const filtered = useMemo(() => {
     return allEntries.filter(e => {
       if (searchedZip && e.zipCode !== searchedZip) return false;
-      if (cityFilter !== "All") {
-        if (!e.city.toLowerCase().includes(cityFilter.toLowerCase())) return false;
-      }
+      if (cityFilter !== "All" && !e.city.toLowerCase().includes(cityFilter.toLowerCase())) return false;
       return true;
     });
   }, [allEntries, searchedZip, cityFilter]);
 
-  // Stats
   const exceedCount = allEntries.filter(e => (e.pfosLevel ?? 0) > EPA_MCL || (e.pfoaLevel ?? 0) > EPA_MCL).length;
+  const needsReviewCount = allEntries.filter(e => (e.verificationStatus ?? "needs_review") !== "cross_verified").length;
 
   const handleSearch = () => {
     const z = zipInput.trim();
@@ -172,7 +242,6 @@ export default function CcrReports() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      {/* Sidebar */}
       <aside
         className="w-48 flex-shrink-0 flex flex-col"
         style={{ background: "hsl(218 30% 14%)", color: "hsl(220 15% 85%)" }}
@@ -202,14 +271,16 @@ export default function CcrReports() {
           </div>
         </nav>
 
-        {/* Stats */}
         <div className="p-3 border-t border-white/10 space-y-2">
           <div className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "hsl(220 15% 45%)" }}>COVERAGE</div>
           <div className="text-xs" style={{ color: "hsl(220 15% 65%)" }}>
             <span className="font-bold text-white">{allEntries.length}</span> ZIP codes indexed
           </div>
           <div className="text-xs" style={{ color: "hsl(220 15% 65%)" }}>
-            <span className="font-bold text-red-400">{exceedCount}</span> ZIPs with PFAS above EPA limit
+            <span className="font-bold text-red-400">{exceedCount}</span> ZIPs above benchmark
+          </div>
+          <div className="text-xs" style={{ color: "hsl(220 15% 65%)" }}>
+            <span className="font-bold text-yellow-300">{needsReviewCount}</span> records need review
           </div>
         </div>
 
@@ -231,14 +302,12 @@ export default function CcrReports() {
         </div>
       </aside>
 
-      {/* Main */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
         <header className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b bg-background">
           <div>
             <h1 className="text-xl font-bold">CCR Reports by ZIP Code</h1>
             <p className="text-sm text-muted-foreground">
-              Consumer Confidence Reports for every ZIP in Palm Beach County — search yours to get the exact report
+              Consumer Confidence Reports with visible source confidence and verification status
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -252,10 +321,8 @@ export default function CcrReports() {
           </div>
         </header>
 
-        {/* Search bar + filters */}
         <div className="flex-shrink-0 px-6 py-4 border-b bg-muted/20">
           <div className="flex flex-wrap items-end gap-3">
-            {/* ZIP search — primary */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Search by ZIP Code</label>
               <div className="flex gap-2">
@@ -282,7 +349,6 @@ export default function CcrReports() {
               </div>
             </div>
 
-            {/* City filter — only show when not searching a specific ZIP */}
             {!searchedZip && (
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Filter by City</label>
@@ -302,7 +368,6 @@ export default function CcrReports() {
             )}
           </div>
 
-          {/* Result count / active filter info */}
           {(searchedZip || cityFilter !== "All") && (
             <div className="flex items-center gap-2 mt-3 text-sm">
               {searchedZip ? (
@@ -319,40 +384,30 @@ export default function CcrReports() {
           )}
         </div>
 
-        {/* Info banner */}
         <div className="flex-shrink-0 px-6 pt-4">
           <div className="p-3 rounded-lg border bg-blue-500/5 border-blue-500/15 flex gap-2.5 text-sm">
             <Info className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
             <span className="text-muted-foreground">
-              Every utility in Palm Beach County must publish an annual CCR by July 1st.
-              PFAS levels shown where available from EPA UCMR5 data —{" "}
-              <strong className="text-foreground">PFAS MCL enforcement begins 2029</strong>, so levels above 4 ppt may not appear as official violations yet.{" "}
-              <a href="https://www.epa.gov/ccr" target="_blank" rel="noopener noreferrer" className="underline text-blue-500">EPA CCR guide →</a>
+              PFAS values above 4 ppt are displayed as <strong className="text-foreground">benchmark exceedances</strong> unless official CCR, SDWIS, or UCMR5 review confirms a legal regulatory violation. Each record now shows source confidence and verification status.
             </span>
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 pb-6 pt-4">
           {isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {[...Array(20)].map((_, i) => (
-                <div key={i} className="h-52 rounded-xl bg-muted animate-pulse" />
-              ))}
+              {[...Array(20)].map((_, i) => <div key={i} className="h-52 rounded-xl bg-muted animate-pulse" />)}
             </div>
           ) : notFound ? (
             <div className="text-center py-20">
               <MapPin className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <h3 className="font-semibold text-lg mb-1">ZIP {searchedZip} not found</h3>
               <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                This ZIP code doesn't appear to be in Palm Beach County. Try a different ZIP, or browse all reports below.
+                This ZIP code does not appear to be in Palm Beach County. Try a different ZIP, or browse all reports below.
               </p>
-              <Button variant="outline" size="sm" className="mt-4" onClick={clearSearch}>
-                Show all ZIPs
-              </Button>
+              <Button variant="outline" size="sm" className="mt-4" onClick={clearSearch}>Show all ZIPs</Button>
             </div>
           ) : searchedZip && searchResult ? (
-            /* ── Single ZIP result — prominent layout ── */
             <div className="max-w-xl mx-auto space-y-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <ChevronRight className="h-4 w-4" />
@@ -362,10 +417,8 @@ export default function CcrReports() {
                 </Button>
               </div>
 
-              {/* Big card for the single result */}
               <Card className={`border-2 ${(searchResult.pfosLevel ?? 0) > EPA_MCL ? "border-red-400 dark:border-red-700" : "border-primary/40"}`}>
                 <CardContent className="p-6 space-y-5">
-                  {/* ZIP + city */}
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
@@ -379,65 +432,56 @@ export default function CcrReports() {
                         {searchResult.pwsid && <span className="font-mono text-xs bg-muted px-1.5 rounded ml-1">{searchResult.pwsid}</span>}
                       </div>
                     </div>
-                    {(() => { const b = statusBadge(searchResult); return <Badge variant={b.variant} className={`text-sm gap-1.5 px-3 py-1 ${b.label === "Within Limits" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300" : ""}`}>{b.icon}{b.label}</Badge>; })()}
+                    {(() => {
+                      const b = statusBadge(searchResult);
+                      return <Badge variant={b.variant} className={`text-sm gap-1.5 px-3 py-1 ${b.label === "Within Listed Limits" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300" : ""}`}>{b.icon}{b.label}</Badge>;
+                    })()}
                   </div>
 
-                  {/* PFAS data */}
+                  <ProvenanceStrip entry={searchResult} />
+
                   {(searchResult.pfosLevel !== null || searchResult.pfoaLevel !== null) && (
                     <div className="grid grid-cols-3 gap-3">
                       <div className={`rounded-lg p-3 text-center ${pfasBg(searchResult.pfosLevel)}`}>
                         <div className="text-xs text-muted-foreground mb-1"><ChemicalTag name="PFOS" variant="plain" className="text-xs text-muted-foreground" /></div>
                         <div className={`text-xl font-black ${pfasColor(searchResult.pfosLevel)}`}>{searchResult.pfosLevel ?? "—"} <span className="text-sm font-normal">ppt</span></div>
-                        {searchResult.pfosLevel !== null && searchResult.pfosLevel > EPA_MCL && <div className="text-[10px] text-red-500 mt-0.5">{(searchResult.pfosLevel / EPA_MCL).toFixed(1)}× EPA limit</div>}
+                        {searchResult.pfosLevel !== null && searchResult.pfosLevel > EPA_MCL && <div className="text-[10px] text-red-500 mt-0.5">{(searchResult.pfosLevel / EPA_MCL).toFixed(1)}× benchmark</div>}
                       </div>
                       <div className={`rounded-lg p-3 text-center ${pfasBg(searchResult.pfoaLevel)}`}>
                         <div className="text-xs text-muted-foreground mb-1"><ChemicalTag name="PFOA" variant="plain" className="text-xs text-muted-foreground" /></div>
                         <div className={`text-xl font-black ${pfasColor(searchResult.pfoaLevel)}`}>{searchResult.pfoaLevel ?? "—"} <span className="text-sm font-normal">ppt</span></div>
-                        {searchResult.pfoaLevel !== null && searchResult.pfoaLevel > EPA_MCL && <div className="text-[10px] text-red-500 mt-0.5">{(searchResult.pfoaLevel / EPA_MCL).toFixed(1)}× EPA limit</div>}
+                        {searchResult.pfoaLevel !== null && searchResult.pfoaLevel > EPA_MCL && <div className="text-[10px] text-red-500 mt-0.5">{(searchResult.pfoaLevel / EPA_MCL).toFixed(1)}× benchmark</div>}
                       </div>
                       <div className="rounded-lg p-3 text-center bg-muted/40 border">
-                        <div className="text-xs text-muted-foreground mb-1">EPA Limit</div>
+                        <div className="text-xs text-muted-foreground mb-1">Benchmark</div>
                         <div className="text-xl font-black text-muted-foreground">4 <span className="text-sm font-normal">ppt</span></div>
                         <div className="text-[10px] text-muted-foreground mt-0.5">PFOS & PFOA</div>
                       </div>
                     </div>
                   )}
 
-                  {/* Notes */}
+                  <ProvenanceNote entry={searchResult} />
+
                   {searchResult.notes && (
                     <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground leading-relaxed">
                       {searchResult.notes}
                     </div>
                   )}
 
-                  {/* Report buttons */}
                   <div className="space-y-2">
                     <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Available Reports</div>
-                    <Button
-                      className="w-full gap-2 h-11 font-semibold"
-                      data-testid="link-single-latest"
-                      onClick={() => window.open(searchResult.latestReportUrl, "_blank", "noopener,noreferrer")}
-                    >
+                    <Button className="w-full gap-2 h-11 font-semibold" data-testid="link-single-latest" onClick={() => window.open(searchResult.latestReportUrl, "_blank", "noopener,noreferrer")}>
                       {searchResult.latestReportType === "PDF" ? <Download className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
                       {searchResult.latestYear} Consumer Confidence Report
                       {searchResult.latestReportType === "PDF" ? " — Download PDF" : " — View Online"}
                     </Button>
                     {searchResult.priorYear && searchResult.priorReportUrl && (
-                      <Button
-                        variant="outline"
-                        className="w-full gap-2 h-9 text-sm"
-                        data-testid="link-single-prior"
-                        onClick={() => window.open(searchResult.priorReportUrl!, "_blank", "noopener,noreferrer")}
-                      >
+                      <Button variant="outline" className="w-full gap-2 h-9 text-sm" data-testid="link-single-prior" onClick={() => window.open(searchResult.priorReportUrl!, "_blank", "noopener,noreferrer")}>
                         <Calendar className="h-4 w-4" />
                         {searchResult.priorYear} Report
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      className="w-full gap-2 h-8 text-xs text-muted-foreground"
-                      onClick={() => window.open("https://floridadep.gov/water/source-drinking-water/content/consumer-confidence-reports-ccrs", "_blank", "noopener,noreferrer")}
-                    >
+                    <Button variant="ghost" className="w-full gap-2 h-8 text-xs text-muted-foreground" onClick={() => window.open("https://floridadep.gov/water/source-drinking-water/content/consumer-confidence-reports-ccrs", "_blank", "noopener,noreferrer")}>
                       <ExternalLink className="h-3.5 w-3.5" />
                       Find older reports on Florida DEP portal
                     </Button>
@@ -446,7 +490,6 @@ export default function CcrReports() {
               </Card>
             </div>
           ) : (
-            /* ── Default: full grid of all ZIPs ── */
             <>
               {filtered.length === 0 ? (
                 <div className="text-center py-16 text-muted-foreground">
@@ -463,10 +506,9 @@ export default function CcrReports() {
             </>
           )}
 
-          {/* Footer */}
           <div className="mt-8 pt-5 border-t text-center text-xs text-muted-foreground space-y-1">
-            <p>CCR data compiled from utility websites, EPA SDWIS, and <a href="https://floridadep.gov/water/source-drinking-water/content/consumer-confidence-reports-ccrs" target="_blank" rel="noopener noreferrer" className="underline">Florida DEP</a>. Report links go directly to utility-published sources.</p>
-            <p>PFAS levels from EPA UCMR5 monitoring data · EPA MCL for PFOS &amp; PFOA: 4 ppt (enforcement 2029) · <a href="https://www.epa.gov/ccr" target="_blank" rel="noopener noreferrer" className="underline">EPA CCR Info</a></p>
+            <p>CCR data compiled from utility websites, EPA SDWIS, EPA UCMR5, and <a href="https://floridadep.gov/water/source-drinking-water/content/consumer-confidence-reports-ccrs" target="_blank" rel="noopener noreferrer" className="underline">Florida DEP</a>. Report links go directly to utility-published sources.</p>
+            <p>PFAS levels above 4 ppt are benchmark exceedances unless confirmed as official regulatory violations · <a href="https://www.epa.gov/ccr" target="_blank" rel="noopener noreferrer" className="underline">EPA CCR Info</a></p>
           </div>
         </div>
       </main>
