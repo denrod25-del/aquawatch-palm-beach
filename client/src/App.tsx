@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import Dashboard from "@/pages/Dashboard";
 import CcrReports from "@/pages/CcrReports";
 import Verification from "@/pages/Verification";
+import ReportCards from "@/pages/ReportCards";
 import NotFound from "@/pages/not-found";
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
             <Route path="/" component={Dashboard} />
             <Route path="/reports" component={CcrReports} />
             <Route path="/verification" component={Verification} />
+            <Route path="/report-cards" component={ReportCards} />
             <Route component={NotFound} />
           </Switch>
         </Router>
