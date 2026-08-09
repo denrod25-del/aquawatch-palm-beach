@@ -9,9 +9,12 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import asyncpg
+import httpx
 import pytest_asyncio
 import redis.asyncio as aioredis
 
+from aquadata.api.app import create_app
+from aquadata.config import Settings
 from aquadata.db.migrate import apply_migrations, load_migrations
 from aquadata.db.seed import run_seed
 
@@ -62,3 +65,34 @@ async def redis_client() -> AsyncIterator[aioredis.Redis]:
     yield client
     await client.flushdb()
     await client.aclose()
+
+
+@pytest_asyncio.fixture(scope="session")
+async def api_client(
+    db_pool: asyncpg.Pool, redis_client: aioredis.Redis
+) -> AsyncIterator[httpx.AsyncClient]:
+    """App wired to the seeded test DB and test Redis, lifespan running."""
+    settings = Settings(
+        database_url=TEST_DATABASE_URL,
+        redis_url=TEST_REDIS_URL,
+        stripe_api_key=None,
+        cache_ttl_seconds=24 * 3600,
+        stripe_batch_seconds=60,
+    )
+    app = create_app(settings)
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+
+
+@pytest_asyncio.fixture(scope="session")
+async def api_key(api_client: httpx.AsyncClient) -> str:
+    """A real free-tier key created through the signup endpoint."""
+    response = await api_client.post(
+        "/v1/keys/signup", json={"email": "dev@example.com", "product_code": "free"}
+    )
+    assert response.status_code == 201, response.text
+    key = response.json()["api_key"]
+    assert isinstance(key, str)
+    return key

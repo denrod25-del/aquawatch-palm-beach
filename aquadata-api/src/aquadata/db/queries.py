@@ -15,6 +15,8 @@ class DbPool(Protocol):
 
     async def fetchval(self, query: str, *args: object) -> Any: ...
 
+    async def execute(self, query: str, *args: object) -> str: ...
+
 
 Pool = DbPool
 
