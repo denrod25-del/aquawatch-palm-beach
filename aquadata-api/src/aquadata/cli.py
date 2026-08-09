@@ -51,6 +51,28 @@ def seed_palm_beach(
         typer.echo(f"{table}: {count} rows")
 
 
+@app.command("stripe-reconcile")
+def stripe_reconcile() -> None:
+    """Replay unsent usage to Stripe (run after outages, or from cron)."""
+    from aquadata.services.stripe_meter import StripeMeter, StripeMeterEventClient
+
+    settings = load_settings()
+    if settings.stripe_api_key is None:
+        typer.echo("STRIPE_API_KEY is not set", err=True)
+        raise typer.Exit(code=1)
+
+    async def _run(database_url: str, api_key: str) -> str:
+        conn = await asyncpg.connect(database_url)
+        try:
+            meter = StripeMeter(conn, StripeMeterEventClient(api_key))
+            result = await meter.run_once()
+            return f"sent {result.sent}, failed {result.failed}"
+        finally:
+            await conn.close()
+
+    typer.echo(asyncio.run(_run(settings.database_url, settings.stripe_api_key)))
+
+
 @app.command("ensure-partitions")
 def ensure_partitions() -> None:
     """Create current+next month api.usage partitions (run from monthly cron)."""

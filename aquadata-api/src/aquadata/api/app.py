@@ -1,5 +1,7 @@
 """FastAPI application factory: routes, middleware, caching, lifecycle."""
 
+import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -21,6 +23,7 @@ from aquadata.core.validation import ZipValidationError, validate_zip
 from aquadata.db import queries
 from aquadata.services import assembler
 from aquadata.services.ratelimit import RateLimiter
+from aquadata.services.stripe_meter import StripeMeter, StripeMeterEventClient
 from aquadata.services.usage import BILLABLE_ROUTES, SUCCESS_RANGE, UsageRecorder
 
 logger = logging.getLogger("aquadata.request")
@@ -81,9 +84,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.redis = redis_client
     app.state.limiter = RateLimiter(redis_client)
     app.state.usage = UsageRecorder(pool)
+    meter_task: asyncio.Task[None] | None = None
+    if settings.stripe_api_key is not None:
+        meter = StripeMeter(pool, StripeMeterEventClient(settings.stripe_api_key))
+        meter_task = asyncio.create_task(meter.run_forever(settings.stripe_batch_seconds))
     try:
         yield
     finally:
+        if meter_task is not None:
+            meter_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await meter_task
         await redis_client.aclose()
         await pool.close()
 
