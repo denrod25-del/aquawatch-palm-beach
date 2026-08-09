@@ -26,6 +26,9 @@ dev = [
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 [tool.ruff]
 line-length = 100
@@ -40,9 +43,19 @@ ignore = ["S101"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004"]  # literal expected values are the point of a test
+# Typer's idiom is Option()/Argument() calls in defaults and lazy imports.
+"src/aquadata/cli.py" = ["B008", "PLC0415"]
+# Curve breakpoints are the methodology constants, documented in methodology.md.
+"src/aquadata/core/scoring.py" = ["PLR2004"]
 
 [tool.mypy]
 strict = true
 python_version = "3.12"
 mypy_path = "src"
 files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+# asyncpg ships no type stubs; its Records/values surface as Any at call sites.
+disallow_untyped_calls = false
