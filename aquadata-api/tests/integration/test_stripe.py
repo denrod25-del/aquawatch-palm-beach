@@ -2,6 +2,7 @@
 replay (test plan item 3). Real Postgres; Stripe replaced by a fake client."""
 
 import uuid
+from typing import Any
 
 from aquadata.core.keys import generate_api_key, hash_api_key
 from aquadata.db.queries import DbPool
@@ -49,7 +50,7 @@ async def _insert_usage(db_pool: DbPool, key_id: str, count: int) -> None:
         )
 
 
-async def _report_rows(db_pool: DbPool, key_id: str) -> list[object]:
+async def _report_rows(db_pool: DbPool, key_id: str) -> list[Any]:
     return await db_pool.fetch(
         "SELECT * FROM api.stripe_reports WHERE key_id = $1::uuid ORDER BY id", key_id
     )

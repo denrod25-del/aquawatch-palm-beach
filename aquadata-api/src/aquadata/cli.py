@@ -51,6 +51,23 @@ def seed_palm_beach(
         typer.echo(f"{table}: {count} rows")
 
 
+@app.command()
+def refresh(
+    data_dir: Path = typer.Option(..., help="Directory containing the snapshot files"),
+    manifest: Path = typer.Option(..., help="Manifest JSON: table -> expected row count"),
+    snapshot_date: str = typer.Option(..., help="Snapshot date YYYY-MM-DD"),
+) -> None:
+    """Re-ingest a snapshot: stage, validate vs manifest (>10% delta fails
+    loudly), then swap schemas in one transaction."""
+    from aquadata.db.refresh import run_refresh
+
+    settings = load_settings()
+    counts = asyncio.run(run_refresh(settings.database_url, data_dir, manifest, snapshot_date))
+    for table, count in counts.items():
+        typer.echo(f"{table}: {count} rows")
+    typer.echo("refresh complete — schemas swapped")
+
+
 @app.command("stripe-reconcile")
 def stripe_reconcile() -> None:
     """Replay unsent usage to Stripe (run after outages, or from cron)."""

@@ -12,13 +12,16 @@ components report ``no_data`` until their sources are ingested.
 """
 
 import json
+import re
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import asyncpg
 
 from aquadata.core.validation import is_valid_zip
+
+_SCHEMA_RE: Final = re.compile(r"[a-z][a-z0-9_]{0,62}", re.ASCII)
 
 _REQUIRED_FILES = (
     "waterSystems.json",
@@ -76,33 +79,44 @@ async def _register_snapshot(
     return snapshot_id
 
 
+def load_seed_files(data_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    """Load and structurally validate the five dataset files."""
+    return {name: _load_json(data_dir, name) for name in _REQUIRED_FILES}
+
+
 async def run_seed(database_url: str, data_dir: Path, snapshot_date_raw: str) -> dict[str, int]:
     """Replace water-schema contents from the JSON files; returns row counts."""
     snapshot_date = date.fromisoformat(snapshot_date_raw)
-    files = {name: _load_json(data_dir, name) for name in _REQUIRED_FILES}
+    files = load_seed_files(data_dir)
 
     conn = await asyncpg.connect(database_url)
     try:
         async with conn.transaction():
-            counts = await _seed_tx(conn, snapshot_date, files)
+            counts = await seed_schema_tx(conn, snapshot_date, files, schema="water")
     finally:
         await conn.close()
     return counts
 
 
-async def _seed_tx(
+async def seed_schema_tx(
     conn: asyncpg.Connection,
     snapshot_date: date,
     files: dict[str, list[dict[str, Any]]],
+    schema: str,
 ) -> dict[str, int]:
+    """Load the dataset into `schema` (water or water_staging). Caller owns
+    the transaction; snapshot rows registered here roll back with it."""
+    if _SCHEMA_RE.fullmatch(schema) is None:
+        raise SeedError(f"invalid schema identifier {schema!r}")
     systems = files["waterSystems.json"]
     violations = files["violations.json"]
     readings = files["readings.json"]
     zip_ccr = files["zipCcr.json"]
     ccr_reports = files["ccrReports.json"]
     await conn.execute(
-        "TRUNCATE water.contaminant_readings, water.violations, water.ccr_reports,"
-        " water.enforcement_actions, water.utility_zips, water.hardness, water.utilities"
+        f"TRUNCATE {schema}.contaminant_readings, {schema}.violations, {schema}.ccr_reports,"
+        f" {schema}.enforcement_actions, {schema}.utility_zips, {schema}.hardness,"
+        f" {schema}.utilities"
     )
     known_pws = {s["pwsid"] for s in systems}
     ccr_manifest = {
@@ -120,7 +134,7 @@ async def _seed_tx(
 
     for s in systems:
         await conn.execute(
-            """INSERT INTO water.utilities
+            f"""INSERT INTO {schema}.utilities
                (pws_id, name, state, county, population_served, source_type, status, snapshot_id)
                VALUES ($1, $2, 'FL', $3, $4, $5, $6, $7)""",
             s["pwsid"], s["name"], s["county"], s["population_served"],
@@ -136,14 +150,14 @@ async def _seed_tx(
         if isinstance(pwsid, str) and pwsid in known_pws and is_valid_zip(row["zip_code"]):
             zip_pairs.add((pwsid, row["zip_code"]))
     await conn.executemany(
-        "INSERT INTO water.utility_zips (pws_id, zip) VALUES ($1, $2)", sorted(zip_pairs)
+        f"INSERT INTO {schema}.utility_zips (pws_id, zip) VALUES ($1, $2)", sorted(zip_pairs)
     )
 
     for v in violations:
         if v["pwsid"] not in known_pws:
             raise SeedError(f"violation {v['violation_id']} references unknown PWS {v['pwsid']}")
         await conn.execute(
-            """INSERT INTO water.violations
+            f"""INSERT INTO {schema}.violations
                (pws_id, violation_id, contaminant, violation_type, category, is_health_based,
                 start_date, end_date, status, description, snapshot_id)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)""",
@@ -157,7 +171,7 @@ async def _seed_tx(
         if r["pwsid"] not in known_pws:
             raise SeedError(f"reading {r['id']} references unknown PWS {r['pwsid']}")
         await conn.execute(
-            """INSERT INTO water.contaminant_readings
+            f"""INSERT INTO {schema}.contaminant_readings
                (pws_id, contaminant, value, unit, sample_date, sample_point, method,
                 epa_limit, ewg_limit, national_avg, snapshot_id)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)""",
@@ -169,7 +183,7 @@ async def _seed_tx(
     for c in ccr_reports:
         pwsid = c.get("pwsid") if c.get("pwsid") in known_pws else None
         await conn.execute(
-            """INSERT INTO water.ccr_reports
+            f"""INSERT INTO {schema}.ccr_reports
                (pws_id, year, report_url, report_type, notes, snapshot_id)
                VALUES ($1,$2,$3,$4,$5,$6)""",
             pwsid, c["year"], c["report_url"], c["report_type"], c.get("notes"), ccr_snap,

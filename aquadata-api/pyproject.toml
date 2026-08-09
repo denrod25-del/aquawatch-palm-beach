@@ -49,6 +49,9 @@ ignore = ["S101"]
 "src/aquadata/api/app.py" = ["B008"]
 # Curve breakpoints are the methodology constants, documented in methodology.md.
 "src/aquadata/core/scoring.py" = ["PLR2004"]
+# Schema identifiers can't be bind parameters; seed_schema_tx regex-validates the
+# schema name and receives only internal constants. All VALUES stay parameterized.
+"src/aquadata/db/seed.py" = ["S608"]
 
 [tool.mypy]
 strict = true
