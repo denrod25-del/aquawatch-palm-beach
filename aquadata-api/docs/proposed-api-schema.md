@@ -1,13 +1,101 @@
-# DRAFT — `api` schema proposal (awaiting approval)
+# DRAFT — database schema proposal (awaiting approval)
 
-Status: **proposal only, no migration written yet.** Per the build spec, migrations
-against the existing database require your sign-off, and the water-data side cannot
-be designed until I can inspect the existing schema (connection string / dump not
-yet available in the build environment).
+Status: **proposal only, no migration written yet.** Owner confirmed no existing
+Postgres instance — both the `water` (data) and `api` (keys/usage/products)
+schemas are designed here from scratch. v1 loads the 6-utility Palm Beach
+dataset already in this repo; the structure is built for statewide/national
+SDWIS/UCMR5 ingest without refactoring.
 
-The `api` schema below (keys, usage, products, snapshots) is *almost* independent
-of the water-data tables, so it can be reviewed now. Open items that depend on the
-existing DB are flagged inline.
+## `water` schema (source data)
+
+```sql
+CREATE SCHEMA IF NOT EXISTS water;
+
+CREATE TABLE water.utilities (
+    pws_id            text PRIMARY KEY,          -- e.g. 'FL4004801'
+    name              text NOT NULL,
+    state             char(2) NOT NULL,
+    county            text,
+    population_served integer NOT NULL CHECK (population_served >= 0),
+    source_type       text,                      -- GW | SW | GWP
+    status            text NOT NULL DEFAULT 'Active',
+    snapshot_id       bigint NOT NULL            -- api.data_snapshots provenance
+);
+
+-- ZIP -> utility resolver. Many-to-many; ordering by population decides primary.
+CREATE TABLE water.utility_zips (
+    pws_id text NOT NULL REFERENCES water.utilities(pws_id),
+    zip    char(5) NOT NULL CHECK (zip ~ '^[0-9]{5}$'),
+    PRIMARY KEY (pws_id, zip)
+);
+CREATE INDEX ON water.utility_zips (zip);
+
+CREATE TABLE water.violations (
+    id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    pws_id          text NOT NULL REFERENCES water.utilities(pws_id),
+    violation_id    text NOT NULL,
+    contaminant     text,
+    violation_type  text NOT NULL,               -- MCL | MR | TT | BENCHMARK
+    category        text NOT NULL,
+    is_health_based boolean NOT NULL,
+    start_date      date NOT NULL,
+    end_date        date,
+    status          text NOT NULL,               -- Resolved | Ongoing | Archived
+    description     text,
+    snapshot_id     bigint NOT NULL,
+    UNIQUE (pws_id, violation_id)
+);
+
+CREATE TABLE water.contaminant_readings (
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    pws_id       text NOT NULL REFERENCES water.utilities(pws_id),
+    contaminant  text NOT NULL,                  -- PFOA, PFOS, Lead, Nitrate, TTHM...
+    value        numeric NOT NULL,
+    unit         text NOT NULL,                  -- ppt | ppb | ppm
+    sample_date  date NOT NULL,
+    sample_point text,
+    method       text,
+    epa_limit    numeric,                        -- MCL / action level in same unit
+    ewg_limit    numeric,
+    national_avg numeric,
+    snapshot_id  bigint NOT NULL
+);
+CREATE INDEX ON water.contaminant_readings (pws_id, contaminant, sample_date DESC);
+
+-- Empty in v1 (no source rows yet); scored as no_data per methodology.
+CREATE TABLE water.enforcement_actions (
+    id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    pws_id      text NOT NULL REFERENCES water.utilities(pws_id),
+    action_type text NOT NULL CHECK (action_type IN ('formal', 'informal')),
+    action_date date NOT NULL,
+    description text,
+    snapshot_id bigint NOT NULL
+);
+
+-- Empty in v1; ZIP-level hardness from the Hard Water Map layers when available.
+CREATE TABLE water.hardness (
+    zip         char(5) PRIMARY KEY CHECK (zip ~ '^[0-9]{5}$'),
+    value_mg_l  numeric NOT NULL CHECK (value_mg_l >= 0),
+    snapshot_id bigint NOT NULL
+);
+
+-- CCR report links surfaced in utility detail responses.
+CREATE TABLE water.ccr_reports (
+    id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    pws_id      text REFERENCES water.utilities(pws_id),
+    year        integer NOT NULL,
+    report_url  text NOT NULL,
+    report_type text NOT NULL DEFAULT 'PDF',
+    notes       text,
+    snapshot_id bigint NOT NULL
+);
+```
+
+Refresh strategy: the CLI ingests into `water_staging.*` twins, validates row
+counts against the manifest (fail on >10% delta), then swaps schemas in one
+transaction (`ALTER SCHEMA ... RENAME`).
+
+## `api` schema (keys, usage, products, snapshots)
 
 ## Roles
 
@@ -105,11 +193,10 @@ CREATE TABLE api.data_snapshots (
 CREATE UNIQUE INDEX ON api.data_snapshots (source) WHERE is_current;
 ```
 
-## Open items blocking the rest of step 1
+## Remaining open items
 
-1. Existing water-data schema (SDWIS/UCMR5/CCR tables) — need connection string
-   or `pg_dump --schema-only` output.
-2. CITY data dictionary (52 utilities → PWS IDs → ZIPs) — not present in this
-   repo; need the file or its repo.
-3. Rate-limit counters live in Redis only (sliding window); the DB is the
-   billing source of truth. Confirm that split is acceptable.
+1. Rate-limit counters live in Redis only (sliding window); `api.usage` in
+   Postgres is the billing source of truth. Confirm that split is acceptable.
+2. v1 data load = the 6-utility / 68-ZIP Palm Beach dataset from this repo
+   (owner-confirmed). The 52-utility CITY dictionary drops into
+   `water.utilities` + `water.utility_zips` later with no schema change.
