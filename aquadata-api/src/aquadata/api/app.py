@@ -52,18 +52,33 @@ def _validated_zip(raw: str) -> str:
         raise _error(422, "invalid_zip", str(exc)) from exc
 
 
-async def _cache_fingerprint(pool: Any) -> str:
-    """Changes whenever a snapshot loads, so refreshes invalidate the cache."""
-    latest = await pool.fetchval(
+_FINGERPRINT_TTL_SECONDS = 5.0
+
+
+async def _cache_fingerprint(request: Request) -> str:
+    """Changes whenever a snapshot loads, so refreshes invalidate the cache.
+
+    Memoized in-process for a few seconds: a refresh becomes visible within
+    _FINGERPRINT_TTL_SECONDS instead of instantly, saving one DB round trip
+    on every cached lookup.
+    """
+    state = request.app.state
+    cached: tuple[float, str] | None = getattr(state, "fingerprint_cache", None)
+    now = time.monotonic()
+    if cached is not None and cached[0] > now:
+        return cached[1]
+    latest = await state.pool.fetchval(
         "SELECT max(loaded_at) FROM api.data_snapshots WHERE is_current"
     )
-    return str(latest.timestamp()) if latest is not None else "none"
+    fingerprint = str(latest.timestamp()) if latest is not None else "none"
+    state.fingerprint_cache = (now + _FINGERPRINT_TTL_SECONDS, fingerprint)
+    return fingerprint
 
 
 async def _cached_json(request: Request, build_key: str, ttl: int, payload_fn: Any) -> Response:
     """Serve from Redis if present; otherwise build, validate implicitly, store."""
     redis_client = request.app.state.redis
-    fingerprint = await _cache_fingerprint(request.app.state.pool)
+    fingerprint = await _cache_fingerprint(request)
     cache_key = f"resp:{build_key}:{fingerprint}"
     cached = await redis_client.get(cache_key)
     if cached is not None:
@@ -83,7 +98,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.pool = pool
     app.state.redis = redis_client
     app.state.limiter = RateLimiter(redis_client)
-    app.state.usage = UsageRecorder(pool)
+    usage = UsageRecorder(pool)
+    usage.start()
+    app.state.usage = usage
     meter_task: asyncio.Task[None] | None = None
     if settings.stripe_api_key is not None:
         meter = StripeMeter(pool, StripeMeterEventClient(settings.stripe_api_key))
@@ -95,6 +112,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             meter_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await meter_task
+        await usage.stop()  # drain buffered billing rows before closing the pool
         await redis_client.aclose()
         await pool.close()
 
@@ -128,7 +146,7 @@ def _register_middleware(app: FastAPI) -> None:
         is_billable = template in BILLABLE_ROUTES
         if context is not None and is_billable and response.status_code in SUCCESS_RANGE:
             zip_param = request.path_params.get("zip_code")
-            await request.app.state.usage.record(
+            request.app.state.usage.record(  # buffered; never blocks the response
                 context.key_id, template, zip_param, response.status_code, latency_ms
             )
         return response

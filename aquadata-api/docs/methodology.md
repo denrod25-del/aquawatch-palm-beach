@@ -1,4 +1,4 @@
-# AquaData composite score — methodology v1.0 (DRAFT, pending approval)
+# AquaData composite score — methodology v1.0 (approved 2026-08-09)
 
 Scale: **0–100, higher is better.** Every number in a response is traceable to a
 source row with a snapshot date (`meta.sources`). The score is informational and
@@ -14,9 +14,10 @@ is not a substitute for utility CCRs or certified lab testing.
 | `enforcement_5yr` | 10% | Formal/informal SDWIS enforcement actions, trailing 5 years |
 | `hardness` | 10% | Aesthetic/secondary quality (scaling, appliance wear) — lowest weight because it is not a health standard |
 
-Weights were set to keep the emphasis of the existing AquaWatch engine (PFAS
-heaviest, regulatory history second) while conforming to the five-layer
-structure. **These are proposed, not final.**
+Weights keep the emphasis of the existing AquaWatch engine (PFAS heaviest,
+regulatory history second) while conforming to the five-layer structure.
+Approved by the owner 2026-08-09; implemented in `aquadata.core.scoring` and
+verified against five hand-computed fixtures in `tests/unit/test_scoring.py`.
 
 ## Per-component normalization (each yields 0–100)
 

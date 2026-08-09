@@ -12,6 +12,7 @@ import asyncpg
 import httpx
 import pytest_asyncio
 import redis.asyncio as aioredis
+from fastapi import FastAPI
 
 from aquadata.api.app import create_app
 from aquadata.config import Settings
@@ -68,9 +69,9 @@ async def redis_client() -> AsyncIterator[aioredis.Redis]:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def api_client(
+async def api_app(
     db_pool: asyncpg.Pool, redis_client: aioredis.Redis
-) -> AsyncIterator[httpx.AsyncClient]:
+) -> AsyncIterator[FastAPI]:
     """App wired to the seeded test DB and test Redis, lifespan running."""
     settings = Settings(
         database_url=TEST_DATABASE_URL,
@@ -81,9 +82,14 @@ async def api_client(
     )
     app = create_app(settings)
     async with app.router.lifespan_context(app):
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            yield client
+        yield app
+
+
+@pytest_asyncio.fixture(scope="session")
+async def api_client(api_app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    transport = httpx.ASGITransport(app=api_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
 
 
 @pytest_asyncio.fixture(scope="session")

@@ -1,10 +1,11 @@
-# DRAFT — database schema proposal (awaiting approval)
+# Database schema (approved 2026-08-09; implemented in migrations/)
 
-Status: **proposal only, no migration written yet.** Owner confirmed no existing
-Postgres instance — both the `water` (data) and `api` (keys/usage/products)
-schemas are designed here from scratch. v1 loads the 6-utility Palm Beach
-dataset already in this repo; the structure is built for statewide/national
-SDWIS/UCMR5 ingest without refactoring.
+Status: **approved and implemented** — see `migrations/0001`–`0004` for the
+authoritative DDL (this document is the design rationale). Owner confirmed no
+pre-existing Postgres instance, so both the `water` (data) and `api`
+(keys/usage/products) schemas were designed from scratch. v1 loads the
+6-utility Palm Beach dataset from this repo; the structure is built for
+statewide/national SDWIS/UCMR5 ingest without refactoring.
 
 ## `water` schema (source data)
 

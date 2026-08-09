@@ -1,6 +1,7 @@
 """End-to-end API tests: auth, endpoints, billing rows, caching (test plan 2-4)."""
 
 import httpx
+from fastapi import FastAPI
 
 from aquadata.core.keys import generate_api_key, hash_api_key
 from aquadata.db.queries import DbPool
@@ -170,8 +171,9 @@ async def test_coverage_and_health_are_public(api_client: httpx.AsyncClient) -> 
 
 
 async def test_usage_rows_written_on_2xx_only(
-    api_client: httpx.AsyncClient, api_key: str, db_pool: DbPool
+    api_client: httpx.AsyncClient, api_app: FastAPI, api_key: str, db_pool: DbPool
 ) -> None:
+    await api_app.state.usage.flush()
     before = await _usage_count(db_pool, api_key)
     ok = await api_client.get("/v1/water-quality/33401", headers={"X-API-Key": api_key})
     assert ok.status_code == 200
@@ -179,16 +181,19 @@ async def test_usage_rows_written_on_2xx_only(
     assert bad_zip.status_code == 422
     missing = await api_client.get("/v1/utilities/FL9999999", headers={"X-API-Key": api_key})
     assert missing.status_code == 404
+    await api_app.state.usage.flush()
     after = await _usage_count(db_pool, api_key)
     assert after == before + 1  # only the 200 billed
 
 
 async def test_usage_not_written_for_public_endpoints(
-    api_client: httpx.AsyncClient, db_pool: DbPool
+    api_client: httpx.AsyncClient, api_app: FastAPI, db_pool: DbPool
 ) -> None:
+    await api_app.state.usage.flush()
     before = await _usage_count(db_pool)
     assert (await api_client.get("/v1/coverage")).status_code == 200
     assert (await api_client.get("/v1/health")).status_code == 200
+    await api_app.state.usage.flush()
     assert await _usage_count(db_pool) == before
 
 

@@ -17,6 +17,8 @@ class DbPool(Protocol):
 
     async def execute(self, query: str, *args: object) -> str: ...
 
+    async def executemany(self, query: str, args: object) -> None: ...
+
 
 Pool = DbPool
 

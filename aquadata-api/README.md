@@ -1,44 +1,97 @@
-# AquaData API (v1 — in progress)
+# AquaData API (v1)
 
-Metered REST API returning drinking-water quality data by US ZIP code.
-Florida-first; architecture scales nationally. Python 3.12 + FastAPI + asyncpg,
-Postgres 16, Redis, Stripe metered billing.
+Metered REST API returning drinking-water quality data by US ZIP code, under
+B. Symbolic LLC. Florida-first (Palm Beach County dataset loaded in v1); the
+schema and resolver scale to statewide/national ingest with no refactoring.
 
-## Current status
+Stack: Python 3.12, FastAPI + asyncpg (no ORM), Postgres 16, Redis, Stripe
+metered billing. Engineering tier: strict — inputs validated at boundaries,
+every return checked, ruff + mypy `strict` clean, real-Postgres integration
+tests (no mocked DB).
 
-**Blocked on external assets — see `docs/proposed-api-schema.md` open items.**
+## Endpoints
 
-Done so far (all data-independent):
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /v1/water-quality/{zip}` | key | Flagship: utilities, composite score, PFAS vs EPA MCLs, violations, hardness |
+| `GET /v1/utilities/{pws_id}` | key | Full utility detail: violation history, contaminant table, CCR links |
+| `GET /v1/hardness/{zip}` | key | Lightweight hardness-only lookup |
+| `GET /v1/coverage` | none | Supported states, utility + ZIP counts |
+| `GET /v1/health` | none | Liveness/readiness (checks Postgres + Redis) |
+| `POST /v1/keys/signup` | none | Self-serve key issue (free tier live; paid via Stripe Checkout) |
 
-- Project scaffold: `pyproject.toml` (ruff + mypy strict configured), `src/` layout.
-- `aquadata.core.validation` — strict ZIP validation (`^\d{5}$`, ASCII-only,
-  reject-don't-coerce). Unit-tested against the spec's edge cases.
-- `aquadata.core.keys` — `ak_live_` + 32-hex key generation, SHA-256 hashing
-  (raw keys are never stored or logged), constant-time hash comparison.
-  Round-trip unit-tested.
-- `docker-compose.yml` — local Postgres 16 + Redis 7.
-- Draft `api` schema proposal for approval: `docs/proposed-api-schema.md`.
+Auth: `X-API-Key: ak_live_<32 hex>`. Keys are stored SHA-256 hashed and never
+logged. OpenAPI docs live at `/docs` with full field descriptions.
 
-Blocked (needs input from the owner):
+Behavior guarantees:
+- Malformed ZIP (`ZIP+4`, alpha, 4-digit, unicode digits) → `422` before any DB touch.
+- Valid ZIP outside coverage → `200` with `coverage: "unsupported_region"`.
+- Multi-utility ZIPs list all systems ordered by population served;
+  `is_primary` marks the largest; per-utility scores in `score.utilities`.
+- Every response's `meta.sources` is read from `api.data_snapshots` — never
+  hardcoded. Scoring is versioned (`docs/methodology.md`, v1.0 approved
+  2026-08-09) with a renormalizing missing-data policy.
 
-1. Connection string + schema dump for the existing Postgres (SDWIS / UCMR5 /
-   CCR data). Nothing in this repo or environment has it.
-2. The CITY data dictionary (52 FL utilities → PWS IDs → ZIPs). This repo only
-   contains the 6-utility Palm Beach County dataset.
-3. The Hard Water Map five-layer scoring function. This repo's scoring engine
-   (`client/src/lib/scoring/`) is a different 6-component model with different
-   weights and no hardness layer.
+## Tiers (seeded in `api.products`; pricing lives in the DB)
 
-## Development
+| Tier | Price | Included | Window |
+|---|---|---|---|
+| free | $0 | 100 calls | per day (sliding 24h) |
+| starter | $19/mo | 5,000 calls | per month (sliding 30d) |
+| pro | $49/mo | 50,000 calls | per month (sliding 30d) |
+
+Overage on paid tiers: $0.002/call via Stripe metered billing. Limits are
+enforced per key (never per IP) with an atomic Redis sliding window; exceeding
+returns `429` with `Retry-After`.
+
+## Billing pipeline
+
+`api.usage` (month-partitioned) is the billing source of truth. Usage rows
+buffer in memory ≤0.5s and batch-insert (a hard crash can only ever
+*under*-bill). A 60s background batcher stages unreported paid usage into
+`api.stripe_reports` atomically with deterministic idempotency keys, then
+pushes Stripe meter events with exponential backoff. If Stripe is down,
+nothing is lost — `aquadata stripe-reconcile` (or the next cycle) replays.
+
+## Local development
 
 ```bash
 cd aquadata-api
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
-docker compose up -d          # local Postgres + Redis
-.venv/bin/pytest              # unit tests (no DB required yet)
+docker compose up -d                  # Postgres 16 + Redis 7
+export DATABASE_URL=postgresql://aquadata:aquadata-local-dev@127.0.0.1:5432/aquadata
+export REDIS_URL=redis://127.0.0.1:6379/0
+.venv/bin/python -m aquadata.cli migrate
+.venv/bin/python -m aquadata.cli seed-palm-beach \
+    --data-dir ../client/src/data --snapshot-date 2025-07-01
+.venv/bin/uvicorn aquadata.api.main:app --workers 4
+```
+
+Tests (spin up a throwaway `aquadata_test` DB; `ab` from apache2-utils is
+required for the load smoke):
+
+```bash
+.venv/bin/pytest          # unit + integration + billing + rate limit + load smoke
 .venv/bin/ruff check .
 .venv/bin/mypy
 ```
 
-Note: the build sandbox currently has Python 3.11; the project targets 3.12
-(no 3.12-only syntax is used yet, so tests run on both).
+## Operations
+
+- `aquadata migrate` — apply SQL migrations (hash-tracked, advisory-locked).
+- `aquadata refresh --data-dir D --manifest M --snapshot-date YYYY-MM-DD` —
+  stage → validate (>10% row-count delta fails loudly) → atomic schema swap.
+  See `data/manifest.palm-beach.json` for the manifest shape.
+- `aquadata ensure-partitions` — create current+next month usage partitions.
+- `aquadata stripe-reconcile` — replay unsent usage to Stripe.
+
+Deployment (nginx + systemd + cron): see `DEPLOY.md`.
+
+## Data status (v1)
+
+Loaded sources: `ccr` (6 utilities, 107 ZIP mappings, violations, CCR links)
+and `readings` (PFAS/lead/nitrate/DBP samples) — real harvested Palm Beach
+County data. Not yet ingested: `enforcement` and `hardness`; their score
+components report `no_data` and the composite renormalizes (see
+`docs/methodology.md`). The 52-utility statewide dictionary drops into
+`water.utilities`/`water.utility_zips` via `aquadata refresh` when ready.
