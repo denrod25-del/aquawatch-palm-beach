@@ -17,12 +17,14 @@ from fastapi.responses import JSONResponse
 from aquadata.api import schemas
 from aquadata.api.deps import KeyContext, require_api_key
 from aquadata.api.signup import signup
+from aquadata.api.webhook import handle_stripe_event, verify_stripe_signature
 from aquadata.config import Settings, load_settings
 from aquadata.core.jsonlog import configure_logging, log_request
 from aquadata.core.validation import ZipValidationError, validate_zip
 from aquadata.db import queries
 from aquadata.services import assembler
 from aquadata.services.ratelimit import RateLimiter
+from aquadata.services.stripe_checkout import StripeCheckoutClient
 from aquadata.services.stripe_meter import StripeMeter, StripeMeterEventClient
 from aquadata.services.usage import BILLABLE_ROUTES, SUCCESS_RANGE, UsageRecorder
 
@@ -101,6 +103,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     usage = UsageRecorder(pool)
     usage.start()
     app.state.usage = usage
+    app.state.checkout = None
+    if (
+        settings.stripe_api_key is not None
+        and settings.checkout_success_url is not None
+        and settings.checkout_cancel_url is not None
+    ):
+        app.state.checkout = StripeCheckoutClient(
+            settings.stripe_api_key,
+            settings.checkout_success_url,
+            settings.checkout_cancel_url,
+        )
     meter_task: asyncio.Task[None] | None = None
     if settings.stripe_api_key is not None:
         meter = StripeMeter(pool, StripeMeterEventClient(settings.stripe_api_key))
@@ -281,4 +294,25 @@ def _register_routes(app: FastAPI) -> None:  # noqa: PLR0915 - route table reads
         "Paid tiers return a Stripe Checkout link once billing is configured.",
     )
     async def keys_signup(body: schemas.SignupRequest, request: Request) -> dict[str, Any]:
-        return await signup(request.app.state.pool, body.email, body.product_code)
+        return await signup(
+            request.app.state.pool, request.app.state.checkout, body.email, body.product_code
+        )
+
+    @app.post(
+        "/v1/stripe/webhook",
+        include_in_schema=False,  # Stripe-facing, not part of the public API surface
+    )
+    async def stripe_webhook(request: Request) -> dict[str, bool]:
+        secret = request.app.state.settings.stripe_webhook_secret
+        if secret is None:
+            raise _error(503, "webhook_unconfigured", "STRIPE_WEBHOOK_SECRET is not set.")
+        payload = await request.body()
+        signature = request.headers.get("Stripe-Signature", "")
+        if not verify_stripe_signature(payload, signature, secret):
+            raise _error(400, "invalid_signature", "Stripe signature verification failed.")
+        changed = await handle_stripe_event(request.app.state.pool, payload)
+        if changed:
+            # Key state changed: drop this worker's auth cache so the change
+            # applies immediately here (other workers converge within 60s).
+            getattr(request.app.state, "key_cache", {}).clear()
+        return {"received": True}

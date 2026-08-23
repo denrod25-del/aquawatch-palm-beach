@@ -48,13 +48,29 @@ Include `deploy/nginx-aquadata.conf` inside your existing `server {}` block
 
 ## 5. Stripe (paid tiers)
 
-1. In the Stripe dashboard create a Billing **Meter** with event name
-   `aquadata_api_call`, then metered Prices for Starter ($19/mo + $0.002/call
-   overage) and Pro ($49/mo + $0.002/call overage).
-2. Set each price id: `UPDATE api.products SET stripe_price_id='price_...'
-   WHERE code='starter';` (same for `pro`).
-3. Put `STRIPE_API_KEY` in `/opt/aquadata/env` and restart the service. The
-   60s in-process batcher starts automatically when the key is present.
+1. Put `STRIPE_API_KEY` in `/opt/aquadata/env`, then provision everything in
+   one idempotent command (meter `aquadata_api_call`, one Product per paid
+   tier, flat monthly + metered overage Prices — amounts come from
+   `api.products` rows, and the created price ids are stored back there):
+
+   ```bash
+   set -a; source /opt/aquadata/env; set +a
+   /opt/aquadata/venv/bin/python -m aquadata.cli stripe-setup
+   ```
+
+2. In the Stripe dashboard add a webhook endpoint pointing at
+   `https://<api-host>/v1/stripe/webhook` subscribed to
+   `checkout.session.completed` and `customer.subscription.deleted`; put its
+   signing secret in the env file as `STRIPE_WEBHOOK_SECRET`.
+3. Set `CHECKOUT_SUCCESS_URL` and `CHECKOUT_CANCEL_URL` (https, e.g. your
+   docs/thanks pages) in the env file and restart the service.
+
+Paid signup then works end to end: `POST /v1/keys/signup` returns the API key
+(created `suspended`) plus a Checkout link; the webhook activates the key when
+payment completes and re-suspends it if the subscription is cancelled
+(webhook-driven state changes apply immediately on the receiving worker and
+within 60s on the others). The 60s usage batcher starts automatically whenever
+`STRIPE_API_KEY` is present.
 
 Until Stripe is configured, paid signup returns 503 and the free tier works;
 usage keeps recording in `api.usage` and reconciles later.

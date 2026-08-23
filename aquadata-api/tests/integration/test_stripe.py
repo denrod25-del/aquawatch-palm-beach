@@ -63,8 +63,10 @@ async def test_batch_collects_and_sends_once(db_pool: DbPool) -> None:
     meter = StripeMeter(db_pool, fake)
 
     result = await meter.run_once()
-    assert result.sent == 1 and result.failed == 0
-    assert fake.calls == [(customer, 3, fake.calls[0][2])]
+    assert result.sent >= 1 and result.failed == 0
+    # Scope to our customer: other tests may have left their own paid usage.
+    our_calls = [c for c in fake.calls if c[0] == customer]
+    assert our_calls == [(customer, 3, our_calls[0][2])]
 
     unmarked = await db_pool.fetchval(
         "SELECT count(*) FROM api.usage WHERE key_id = $1::uuid AND stripe_reported_at IS NULL",
@@ -84,10 +86,11 @@ async def test_double_fire_is_idempotent(db_pool: DbPool) -> None:
 
     first = await meter.run_once()
     second = await meter.run_once()  # double-fire: nothing left to claim
-    assert first.sent == 1
+    assert first.sent >= 1
     assert second.sent == 0 and second.failed == 0
-    assert len(await _report_rows(db_pool, key_id)) == 1
-    assert len(fake.unique_keys()) == 1
+    reports = await _report_rows(db_pool, key_id)
+    assert len(reports) == 1  # our key produced exactly one report across both fires
+    assert reports[0]["idempotency_key"] in fake.unique_keys()
 
 
 async def test_outage_then_reconciliation_replay(db_pool: DbPool) -> None:

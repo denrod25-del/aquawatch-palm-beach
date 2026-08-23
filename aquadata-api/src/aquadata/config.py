@@ -23,6 +23,9 @@ class Settings:
     stripe_api_key: str | None
     cache_ttl_seconds: int
     stripe_batch_seconds: int
+    stripe_webhook_secret: str | None = None
+    checkout_success_url: str | None = None
+    checkout_cancel_url: str | None = None
 
 
 def _require(env: dict[str, str], name: str) -> str:
@@ -51,10 +54,18 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
     if not redis_url.startswith("redis://"):
         raise ConfigError("REDIS_URL must be a redis:// URL")
     stripe_key = src.get("STRIPE_API_KEY", "").strip() or None
+    success_url = src.get("CHECKOUT_SUCCESS_URL", "").strip() or None
+    cancel_url = src.get("CHECKOUT_CANCEL_URL", "").strip() or None
+    for name, url in (("CHECKOUT_SUCCESS_URL", success_url), ("CHECKOUT_CANCEL_URL", cancel_url)):
+        if url is not None and not url.startswith("https://"):
+            raise ConfigError(f"{name} must be an https:// URL")
     return Settings(
         database_url=database_url,
         redis_url=redis_url,
         stripe_api_key=stripe_key,
         cache_ttl_seconds=_positive_int(src, "CACHE_TTL_SECONDS", 24 * 3600),
         stripe_batch_seconds=_positive_int(src, "STRIPE_BATCH_SECONDS", 60),
+        stripe_webhook_secret=src.get("STRIPE_WEBHOOK_SECRET", "").strip() or None,
+        checkout_success_url=success_url,
+        checkout_cancel_url=cancel_url,
     )

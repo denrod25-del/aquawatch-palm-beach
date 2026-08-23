@@ -68,6 +68,38 @@ def refresh(
     typer.echo("refresh complete — schemas swapped")
 
 
+@app.command("stripe-setup")
+def stripe_setup() -> None:
+    """Provision Stripe: usage meter, per-tier products, flat + metered
+    prices — idempotent; price ids are stored in api.products."""
+    from aquadata.services.stripe_setup import (
+        METER_EVENT_NAME,
+        StripeProvisioningClient,
+        run_setup,
+    )
+
+    settings = load_settings()
+    if settings.stripe_api_key is None:
+        typer.echo("STRIPE_API_KEY is not set", err=True)
+        raise typer.Exit(code=1)
+
+    async def _run(database_url: str, api_key: str) -> None:
+        conn = await asyncpg.connect(database_url)
+        try:
+            result = await run_setup(conn, StripeProvisioningClient(api_key))
+        finally:
+            await conn.close()
+        typer.echo(f"meter: {result.meter_id} (event {METER_EVENT_NAME})")
+        for tier in result.tiers:
+            typer.echo(
+                f"{tier.code}: price {tier.stripe_price_id}, "
+                f"overage {tier.stripe_overage_price_id or 'none'}"
+            )
+
+    asyncio.run(_run(settings.database_url, settings.stripe_api_key))
+    typer.echo("stripe setup complete — remember STRIPE_WEBHOOK_SECRET for /v1/stripe/webhook")
+
+
 @app.command("stripe-reconcile")
 def stripe_reconcile() -> None:
     """Replay unsent usage to Stripe (run after outages, or from cron)."""

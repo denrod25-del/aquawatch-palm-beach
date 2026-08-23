@@ -29,6 +29,7 @@ TEST_DATABASE_URL = os.environ.get(
 )
 TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL", "redis://127.0.0.1:6379/9")
 SEED_SNAPSHOT_DATE = "2025-07-01"
+TEST_WEBHOOK_SECRET = "whsec_integration_test_secret"  # noqa: S105 - test-only value
 
 _ADMIN_URL = TEST_DATABASE_URL.rsplit("/", 1)[0] + "/postgres"
 _TEST_DB_NAME = TEST_DATABASE_URL.rsplit("/", 1)[1]
@@ -79,6 +80,7 @@ async def api_app(
         stripe_api_key=None,
         cache_ttl_seconds=24 * 3600,
         stripe_batch_seconds=60,
+        stripe_webhook_secret=TEST_WEBHOOK_SECRET,
     )
     app = create_app(settings)
     async with app.router.lifespan_context(app):

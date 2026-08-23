@@ -190,7 +190,7 @@ class SignupResponse(BaseModel):
     key_id: str = Field(description="Stable identifier for this key.")
     api_key: str | None = Field(
         description="The raw API key — shown exactly once, only stored hashed. "
-        "Null for paid tiers until checkout completes."
+        "Paid-tier keys are issued suspended and activate when checkout completes."
     )
     product_code: str
     checkout_url: str | None = Field(

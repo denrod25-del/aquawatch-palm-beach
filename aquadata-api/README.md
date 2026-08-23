@@ -53,6 +53,14 @@ buffer in memory ≤0.5s and batch-insert (a hard crash can only ever
 pushes Stripe meter events with exponential backoff. If Stripe is down,
 nothing is lost — `aquadata stripe-reconcile` (or the next cycle) replays.
 
+Provisioning is one idempotent command: `aquadata stripe-setup` creates the
+usage meter, per-tier Products, and flat + metered Prices from the
+`api.products` rows and stores the price ids back in the DB. Paid signup then
+issues the key immediately (status `suspended`) with a Stripe Checkout link;
+the signature-verified `/v1/stripe/webhook` activates the key on
+`checkout.session.completed` and re-suspends on
+`customer.subscription.deleted`.
+
 ## Local development
 
 ```bash
