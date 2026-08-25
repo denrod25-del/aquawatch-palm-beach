@@ -10,7 +10,7 @@ class FakeSetupClient:
     def __init__(self) -> None:
         self.meter_calls = 0
         self.flat_price_calls: list[tuple[str, int]] = []
-        self.metered_price_calls: list[tuple[str, str, int]] = []
+        self.metered_price_calls: list[tuple[str, int, int]] = []
         self.products: dict[str, str] = {}
 
     async def ensure_meter(self, event_name: str) -> str:
