@@ -27,10 +27,10 @@ class FakeSetupClient:
         return f"price_flat_{product_id}"
 
     async def ensure_metered_price(
-        self, product_id: str, meter_id: str, micro_usd_per_call: int
+        self, product_id: str, meter_id: str, micro_usd_per_call: int, included_calls: int
     ) -> str:
         assert meter_id == "mtr_fake1"
-        self.metered_price_calls.append((product_id, meter_id, micro_usd_per_call))
+        self.metered_price_calls.append((product_id, micro_usd_per_call, included_calls))
         return f"price_over_{product_id}"
 
 
@@ -48,9 +48,13 @@ async def test_setup_provisions_paid_tiers_and_stores_ids(db_pool: DbPool) -> No
 
     assert result.meter_id == "mtr_fake1"
     assert {t.code for t in result.tiers} == {"starter", "pro"}
-    # Approved pricing flows from DB rows into Stripe: $19/$49 flat, 2000 micro-USD overage.
+    # Approved pricing flows from DB rows into Stripe: $19/$49 flat, 2000 micro-USD
+    # overage with the tier's included allowance free (graduated tiers).
     assert sorted(c for _, c in client.flat_price_calls) == [1900, 4900]
-    assert [m for _, _, m in client.metered_price_calls] == [2000, 2000]
+    assert sorted((m, inc) for _, m, inc in client.metered_price_calls) == [
+        (2000, 5000),   # starter: first 5k calls covered by the flat fee
+        (2000, 50000),  # pro: first 50k calls covered by the flat fee
+    ]
 
     rows = await db_pool.fetch(
         """SELECT code, stripe_price_id, stripe_overage_price_id

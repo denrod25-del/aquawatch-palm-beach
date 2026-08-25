@@ -29,6 +29,19 @@ async def test_signup_free_returns_key_once(api_client: httpx.AsyncClient) -> No
     assert body["checkout_url"] is None
 
 
+async def test_duplicate_free_signup_is_409(api_client: httpx.AsyncClient) -> None:
+    """One active free key per email — repeat signups can't multiply the quota."""
+    first = await api_client.post(
+        "/v1/keys/signup", json={"email": "dupe@example.com", "product_code": "free"}
+    )
+    assert first.status_code == 201
+    second = await api_client.post(
+        "/v1/keys/signup", json={"email": "dupe@example.com", "product_code": "free"}
+    )
+    assert second.status_code == 409
+    assert second.json()["error"] == "free_key_exists"
+
+
 async def test_signup_rejects_bad_email(api_client: httpx.AsyncClient) -> None:
     response = await api_client.post(
         "/v1/keys/signup", json={"email": "not-an-email", "product_code": "free"}

@@ -85,7 +85,8 @@ def component_no_data(name: str) -> ComponentScore:
     return ComponentScore(name=name, status="no_data", score=None)
 
 
-def _years_before(as_of: date, years: int) -> date:
+def years_before(as_of: date, years: int) -> date:
+    """Leap-safe year subtraction (Feb 29 maps to Feb 28)."""
     try:
         return as_of.replace(year=as_of.year - years)
     except ValueError:  # Feb 29 -> Feb 28
@@ -94,7 +95,7 @@ def _years_before(as_of: date, years: int) -> date:
 
 def score_violations(violations: Sequence[ViolationRecord], as_of: date) -> ComponentScore:
     """100 minus 25/health-based, 8/other, extra 10 if ongoing; floor 0."""
-    window_start = _years_before(as_of, 5)
+    window_start = years_before(as_of, 5)
     in_window = [v for v in violations if v.start_date >= window_start]
     deduction = sum(25 if v.is_health_based else 8 for v in in_window)
     deduction += 10 * sum(1 for v in in_window if v.is_ongoing)
@@ -165,7 +166,7 @@ def score_lead(p90_ppb: float) -> ComponentScore:
 
 def score_enforcement(actions: Sequence[EnforcementRecord], as_of: date) -> ComponentScore:
     """100 minus 35/formal and 15/informal in the trailing 5 years; floor 0."""
-    window_start = _years_before(as_of, 5)
+    window_start = years_before(as_of, 5)
     in_window = [a for a in actions if a.action_date >= window_start]
     formal = sum(1 for a in in_window if a.action_type == "formal")
     informal = len(in_window) - formal

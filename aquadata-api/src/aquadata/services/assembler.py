@@ -26,6 +26,7 @@ from aquadata.core.scoring import (
     score_lead,
     score_pfas,
     score_violations,
+    years_before,
 )
 from aquadata.db import queries
 from aquadata.db.queries import DbPool
@@ -181,7 +182,7 @@ def _violation_json(r: Any) -> dict[str, Any]:
 
 async def _violations_block(pool: DbPool, pws_id: str, as_of: date) -> dict[str, Any]:
     rows = await queries.violations_for_pws(pool, pws_id)
-    window_start = as_of.replace(year=as_of.year - 5)
+    window_start = years_before(as_of, 5)  # leap-safe: bare .replace() dies on Feb 29
     in_window = [r for r in rows if r["start_date"] >= window_start]
     return {
         "count_5yr": len(in_window),

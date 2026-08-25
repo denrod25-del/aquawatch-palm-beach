@@ -23,7 +23,9 @@ from aquadata.db.queries import DbPool
 
 logger = logging.getLogger("aquadata.stripe")
 
-MAX_ATTEMPTS: Final = 10
+# Failed pushes retry forever with capped exponential backoff — a report is
+# never excluded from reconciliation, so recorded usage cannot become
+# permanently unbillable no matter how long a Stripe outage lasts.
 _BACKOFF_CAP_SECONDS: Final = 3600
 
 _COLLECT_SQL: Final = """
@@ -54,10 +56,9 @@ SELECT r.id, r.idempotency_key, r.quantity, k.stripe_customer_id
 FROM api.stripe_reports r
 JOIN api.keys k ON k.id = r.key_id
 WHERE r.status IN ('pending', 'failed')
-  AND r.attempts < $1
   AND (r.last_attempt_at IS NULL
        OR r.last_attempt_at
-          + make_interval(secs => least($2, power(2, r.attempts))) <= now())
+          + make_interval(secs => least($1, power(2, least(r.attempts, 30)))) <= now())
 ORDER BY r.id
 """
 
@@ -90,7 +91,7 @@ class StripeMeter:
 
     async def push_pending(self) -> PushResult:
         """Send due pending/failed reports; each outcome is persisted."""
-        reports = await self._pool.fetch(_PENDING_SQL, MAX_ATTEMPTS, _BACKOFF_CAP_SECONDS)
+        reports = await self._pool.fetch(_PENDING_SQL, _BACKOFF_CAP_SECONDS)
         sent = failed = 0
         for report in reports:
             try:

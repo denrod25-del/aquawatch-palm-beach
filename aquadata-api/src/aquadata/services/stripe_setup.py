@@ -32,7 +32,7 @@ class StripeSetupClient(Protocol):
     async def ensure_flat_price(self, product_id: str, monthly_cents: int) -> str: ...
 
     async def ensure_metered_price(
-        self, product_id: str, meter_id: str, micro_usd_per_call: int
+        self, product_id: str, meter_id: str, micro_usd_per_call: int, included_calls: int
     ) -> str: ...
 
 
@@ -53,8 +53,8 @@ async def run_setup(pool: DbPool, client: StripeSetupClient) -> SetupResult:
     """Provision Stripe for every active paid tier; returns what is now live."""
     meter_id = await client.ensure_meter(METER_EVENT_NAME)
     rows = await pool.fetch(
-        """SELECT code, name, monthly_price_cents, overage_price_micro_usd,
-                  stripe_price_id, stripe_overage_price_id
+        """SELECT code, name, monthly_price_cents, included_calls,
+                  overage_price_micro_usd, stripe_price_id, stripe_overage_price_id
            FROM api.products
            WHERE active AND monthly_price_cents > 0
            ORDER BY code"""
@@ -68,7 +68,10 @@ async def run_setup(pool: DbPool, client: StripeSetupClient) -> SetupResult:
         overage_id = row["stripe_overage_price_id"]
         if overage_id is None and row["overage_price_micro_usd"] is not None:
             overage_id = await client.ensure_metered_price(
-                product_id, meter_id, int(row["overage_price_micro_usd"])
+                product_id,
+                meter_id,
+                int(row["overage_price_micro_usd"]),
+                int(row["included_calls"]),
             )
         await pool.execute(
             """UPDATE api.products
@@ -161,9 +164,13 @@ class StripeProvisioningClient:
         return await asyncio.to_thread(_run)
 
     async def ensure_metered_price(
-        self, product_id: str, meter_id: str, micro_usd_per_call: int
+        self, product_id: str, meter_id: str, micro_usd_per_call: int, included_calls: int
     ) -> str:
-        assert micro_usd_per_call > 0
+        """Graduated tiers: the first ``included_calls`` units in each billing
+        period cost $0 (covered by the flat monthly price), and only calls
+        beyond that bill at the overage rate — so the batcher can report every
+        billable call without double-charging the included allowance."""
+        assert micro_usd_per_call > 0 and included_calls > 0
         # Stripe prices are in decimal cents: 2000 micro-USD/call -> "0.2".
         decimal_cents = f"{micro_usd_per_call / 10_000:g}"
 
@@ -180,7 +187,12 @@ class StripeProvisioningClient:
                 params={
                     "product": product_id,
                     "currency": "usd",
-                    "unit_amount_decimal": decimal_cents,
+                    "billing_scheme": "tiered",
+                    "tiers_mode": "graduated",
+                    "tiers": [
+                        {"up_to": included_calls, "unit_amount": 0},
+                        {"up_to": "inf", "unit_amount_decimal": decimal_cents},
+                    ],
                     "recurring": {
                         "interval": "month",
                         "usage_type": "metered",

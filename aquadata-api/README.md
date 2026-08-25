@@ -42,7 +42,11 @@ Behavior guarantees:
 
 Overage on paid tiers: $0.002/call via Stripe metered billing. Limits are
 enforced per key (never per IP) with an atomic Redis sliding window; exceeding
-returns `429` with `Retry-After`.
+returns `429` with `Retry-After`. Free signup is capped at one active key per
+email (DB-enforced; repeat signups get `409`). Note: because the spec pins a
+hard 429 at each tier's included volume, overage billing only engages if the
+enforcement caps in `api.products` are raised above the included amounts —
+the tiered Stripe price already handles that correctly whenever you do.
 
 ## Billing pipeline
 
@@ -55,7 +59,10 @@ nothing is lost — `aquadata stripe-reconcile` (or the next cycle) replays.
 
 Provisioning is one idempotent command: `aquadata stripe-setup` creates the
 usage meter, per-tier Products, and flat + metered Prices from the
-`api.products` rows and stores the price ids back in the DB. Paid signup then
+`api.products` rows and stores the price ids back in the DB. The metered
+price uses graduated tiers — the first `included_calls` units per billing
+period cost $0 (covered by the flat fee), so reporting every billable call
+never double-charges the included allowance. Paid signup then
 issues the key immediately (status `suspended`) with a Stripe Checkout link;
 the signature-verified `/v1/stripe/webhook` activates the key on
 `checkout.session.completed` and re-suspends on

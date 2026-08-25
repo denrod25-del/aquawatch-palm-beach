@@ -9,6 +9,7 @@ subscription is later cancelled.
 import re
 from typing import Any, Final
 
+import asyncpg
 from fastapi import HTTPException
 
 from aquadata.core.keys import generate_api_key, hash_api_key
@@ -101,7 +102,18 @@ async def signup(
         return await _paid_signup(pool, checkout, product, email)
 
     raw_key = generate_api_key()
-    key_id = await _insert_key(pool, raw_key, product["code"], email, status="active")
+    try:
+        key_id = await _insert_key(pool, raw_key, product["code"], email, status="active")
+    except asyncpg.UniqueViolationError as exc:
+        # keys_one_active_free_per_email_idx: one active free key per email.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "free_key_exists",
+                "detail": "This email already has an active free key. Revoke it or "
+                "upgrade to a paid tier for more capacity.",
+            },
+        ) from exc
     return {
         "key_id": key_id,
         "api_key": raw_key,

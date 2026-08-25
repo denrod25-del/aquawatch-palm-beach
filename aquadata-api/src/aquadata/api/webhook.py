@@ -50,7 +50,16 @@ async def _activate_key(pool: DbPool, obj: dict[str, Any]) -> bool:
     customer = obj.get("customer")
     subscription = obj.get("subscription")
     if not isinstance(key_id, str) or not isinstance(customer, str):
-        logger.warning("checkout.session.completed without key/customer reference")
+        logger.warning("checkout completion without key/customer reference")
+        return False
+    # A session can complete with payment still unpaid (async payment methods,
+    # e.g. bank debits). Never activate until Stripe says the payment landed;
+    # async_payment_succeeded delivers the paid retry of this same session.
+    if obj.get("payment_status") != "paid":
+        logger.info(
+            "checkout completed but not paid; key stays suspended",
+            extra={"extra_fields": {"key_id": key_id}},
+        )
         return False
     result = await pool.execute(
         """UPDATE api.keys
@@ -91,7 +100,7 @@ async def handle_stripe_event(pool: DbPool, payload: bytes) -> bool:
     obj = event.get("data", {}).get("object", {})
     if not isinstance(obj, dict):
         return False
-    if event_type == "checkout.session.completed":
+    if event_type in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
         return await _activate_key(pool, obj)
     if event_type == "customer.subscription.deleted":
         return await _suspend_customer_keys(pool, obj)

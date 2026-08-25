@@ -19,6 +19,7 @@ from aquadata.core.scoring import (
     score_lead,
     score_pfas,
     score_violations,
+    years_before,
 )
 
 AS_OF = date(2026, 8, 1)
@@ -131,6 +132,12 @@ def test_fixture_5_exact_boundaries() -> None:
     )
     assert result.composite == 78
     assert result.confidence == "full"
+
+
+def test_years_before_handles_leap_day() -> None:
+    assert years_before(date(2028, 2, 29), 5) == date(2023, 2, 28)
+    assert years_before(date(2028, 2, 29), 4) == date(2024, 2, 29)
+    assert years_before(date(2026, 8, 1), 5) == date(2021, 8, 1)
 
 
 def test_violation_outside_5yr_window_ignored() -> None:
